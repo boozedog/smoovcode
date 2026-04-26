@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.53",
+    "@ast-grep/napi": "^0.42.1",
     "@cloudflare/codemode": "^0.3.4",
     "@jitl/quickjs-wasmfile-release-asyncify": "^0.31.0",
     "@sebastianwessel/quickjs": "^3.0.1",

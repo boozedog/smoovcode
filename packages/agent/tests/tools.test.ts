@@ -12,56 +12,6 @@ async function invoke(tool: unknown, input: unknown): Promise<unknown> {
   return await exec(input, {});
 }
 
-describe("tools.echo", () => {
-  test("echoes the input text back", async () => {
-    const { echo } = createTools();
-    const out = await invoke(echo, { text: "hello" });
-    expect(out).toEqual({ echoed: "hello" });
-  });
-
-  test("preserves the empty string", async () => {
-    const { echo } = createTools();
-    const out = await invoke(echo, { text: "" });
-    expect(out).toEqual({ echoed: "" });
-  });
-
-  test("has a description", () => {
-    const { echo } = createTools();
-    expect(echo.description).toMatch(/echo/i);
-  });
-});
-
-describe("tools.add", () => {
-  test("sums two positive numbers", async () => {
-    const { add } = createTools();
-    const out = await invoke(add, { a: 2, b: 3 });
-    expect(out).toEqual({ sum: 5 });
-  });
-
-  test("handles negatives", async () => {
-    const { add } = createTools();
-    const out = await invoke(add, { a: -7, b: 4 });
-    expect(out).toEqual({ sum: -3 });
-  });
-
-  test("handles zero", async () => {
-    const { add } = createTools();
-    const out = await invoke(add, { a: 0, b: 0 });
-    expect(out).toEqual({ sum: 0 });
-  });
-
-  test("handles floats", async () => {
-    const { add } = createTools();
-    const out = await invoke(add, { a: 0.1, b: 0.2 });
-    expect((out as { sum: number }).sum).toBeCloseTo(0.3);
-  });
-
-  test("has a description", () => {
-    const { add } = createTools();
-    expect(add.description).toMatch(/add/i);
-  });
-});
-
 describe("tools.bash", () => {
   let sandbox: string;
 
@@ -133,5 +83,85 @@ describe("tools.bash", () => {
   test("has a description", () => {
     const { bash } = createTools({ cwd: sandbox });
     expect(bash.description).toMatch(/bash|shell/i);
+  });
+});
+
+describe("tools.astGrep", () => {
+  let sandbox: string;
+
+  beforeEach(() => {
+    sandbox = mkdtempSync(join(tmpdir(), "smoov-astgrep-"));
+  });
+
+  afterEach(() => {
+    rmSync(sandbox, { recursive: true, force: true });
+  });
+
+  test("finds matches in a source string with range info", async () => {
+    const { astGrep } = createTools({ cwd: sandbox });
+    const out = (await invoke(astGrep, {
+      pattern: "console.log($A)",
+      language: "JavaScript",
+      source: "console.log('hi'); console.warn('x'); console.log('bye');",
+    })) as {
+      matches: Array<{
+        text: string;
+        range: { start: { line: number; column: number }; end: { line: number; column: number } };
+      }>;
+    };
+    expect(out.matches.length).toBe(2);
+    expect(out.matches[0].text).toBe("console.log('hi')");
+    expect(out.matches[1].text).toBe("console.log('bye')");
+    expect(out.matches[0].range.start.line).toBe(0);
+    expect(out.matches[0].range.start.column).toBe(0);
+    expect(out.matches[0].range.end.column).toBeGreaterThan(0);
+  });
+
+  test("returns empty matches when pattern does not match", async () => {
+    const { astGrep } = createTools({ cwd: sandbox });
+    const out = (await invoke(astGrep, {
+      pattern: "nonexistent_function($X)",
+      language: "JavaScript",
+      source: "const x = 1",
+    })) as { matches: unknown[] };
+    expect(out.matches).toEqual([]);
+  });
+
+  test("finds matches across files under cwd paths", async () => {
+    writeFileSync(join(sandbox, "a.ts"), "function foo() { return 1 }\n");
+    writeFileSync(join(sandbox, "b.ts"), "function bar() { return 2 }\n");
+    writeFileSync(join(sandbox, "c.ts"), "const baz = 3\n");
+    const { astGrep } = createTools({ cwd: sandbox });
+    const out = (await invoke(astGrep, {
+      pattern: "function $NAME() { return $X }",
+      language: "TypeScript",
+      paths: ["."],
+    })) as { matches: Array<{ file: string; text: string }> };
+    expect(out.matches.length).toBe(2);
+    const files = out.matches.map((m) => m.file).sort();
+    expect(files[0]).toMatch(/a\.ts$/);
+    expect(files[1]).toMatch(/b\.ts$/);
+  });
+
+  test("rejects when both source and paths are provided", async () => {
+    const { astGrep } = createTools({ cwd: sandbox });
+    await expect(
+      invoke(astGrep, {
+        pattern: "$X",
+        language: "JavaScript",
+        source: "1",
+        paths: ["."],
+      }),
+    ).rejects.toThrow();
+  });
+
+  test("rejects when neither source nor paths are provided", async () => {
+    const { astGrep } = createTools({ cwd: sandbox });
+    await expect(invoke(astGrep, { pattern: "$X", language: "JavaScript" })).rejects.toThrow();
+  });
+
+  test("has a description mentioning ast-grep", () => {
+    const { astGrep } = createTools({ cwd: sandbox });
+    expect(astGrep.description).toMatch(/ast.?grep|structural/i);
   });
 });
