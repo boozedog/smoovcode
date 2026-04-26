@@ -1,0 +1,42 @@
+{
+  "name": "@smoovcode/agent",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "./package.json": "./package.json"
+    }
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.53",
+    "@cloudflare/codemode": "^0.3.4",
+    "@jitl/quickjs-wasmfile-release-asyncify": "^0.31.0",
+    "@sebastianwessel/quickjs": "^3.0.1",
+    "ai": "^6.0.168",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@typescript/native-preview": "7.0.0-dev.20260328.1",
+    "typescript": "~6.0.2",
+    "vite-plus": "latest"
+  }
+}

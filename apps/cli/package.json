@@ -1,0 +1,27 @@
+{
+  "name": "smoov-cli",
+  "version": "0.0.0",
+  "private": true,
+  "bin": {
+    "smoov": "./dist/index.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "vp pack",
+    "dev": "tsx --env-file-if-exists=../../.env src/index.ts",
+    "start": "node --env-file-if-exists=../../.env dist/index.mjs",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "@smoovcode/agent": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "~6.0.2",
+    "vite-plus": "latest"
+  }
+}
