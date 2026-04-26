@@ -302,4 +302,40 @@ describe("Agent", () => {
     expect(tools.codemode.kind).toBe("codemode-tool");
     expect(tools.codemode.opts.executor).toBe(stubExecutor);
   });
+
+  test("registers `write` and `edit` as top-level AI SDK tools (alongside codemode)", async () => {
+    // Writes are user-visible mutations: each one is a discrete tool-call so
+    // the harness can render diffs / approvals cleanly. They live outside
+    // codemode by design.
+    nextStreamParts = [];
+    await collect(new Agent({ executor: stubExecutor }).run("hi"));
+    const tools = lastStreamArgs?.tools as Record<string, unknown>;
+    expect(tools.write).toBeDefined();
+    expect(tools.edit).toBeDefined();
+  });
+
+  test("passes only read-style tools (bash, astGrep) into codemode", async () => {
+    // The split: reads stay inside codemode (orchestration-friendly), writes
+    // are top-level. If a write ever leaks into codemode, the model can hide
+    // mutations inside a TS scope and the harness loses visibility.
+    nextStreamParts = [];
+    await collect(new Agent({ executor: stubExecutor }).run("hi"));
+    const tools = lastStreamArgs?.tools as {
+      codemode: { opts: { tools: Record<string, unknown> } };
+    };
+    const codemodeTools = tools.codemode.opts.tools;
+    expect(Object.keys(codemodeTools).sort()).toEqual(["astGrep", "bash"]);
+    expect(codemodeTools.write).toBeUndefined();
+    expect(codemodeTools.edit).toBeUndefined();
+  });
+
+  test("system prompt explains the read-vs-write split", async () => {
+    nextStreamParts = [];
+    await collect(new Agent({ executor: stubExecutor }).run("hi"));
+    const sys = lastStreamArgs?.system as string;
+    // Both surfaces are named so the model knows where each call belongs.
+    expect(sys).toMatch(/codemode/i);
+    expect(sys).toMatch(/\bwrite\b/);
+    expect(sys).toMatch(/\bedit\b/);
+  });
 });

@@ -61,11 +61,16 @@ export class Agent {
   async *run(userMessage: string): AsyncGenerator<AgentEvent> {
     this.history.push({ role: "user", content: userMessage });
 
+    const { bash, astGrep, write, edit } = createTools({
+      ...(this.opts.cwd !== undefined ? { cwd: this.opts.cwd } : {}),
+      ...(this.opts.approveHost ? { approveHost: this.opts.approveHost } : {}),
+    });
+    // The split: reads (bash, astGrep) live inside codemode for orchestration
+    // (loops, Promise.all, intermediate values). Writes (write, edit) are
+    // top-level tools so each mutation is a discrete, scrollback-visible
+    // event the harness can render and gate on.
     const codemode = createCodeTool({
-      tools: createTools({
-        ...(this.opts.cwd !== undefined ? { cwd: this.opts.cwd } : {}),
-        ...(this.opts.approveHost ? { approveHost: this.opts.approveHost } : {}),
-      }),
+      tools: { bash, astGrep },
       executor: this.opts.executor,
     });
 
@@ -76,7 +81,7 @@ export class Agent {
       providerOptions: { openai: { store: !isZdr() } },
       system: this.opts.system ?? DEFAULT_SYSTEM_PROMPT,
       messages: this.history,
-      tools: { codemode },
+      tools: { codemode, write, edit },
       stopWhen: stepCountIs(30),
     });
 
@@ -140,15 +145,21 @@ function explainSilentFinish(finishReason: string, stepCount: number): string {
   }
 }
 
-const DEFAULT_SYSTEM_PROMPT = `You are smoovcode, a coding agent. You operate by calling the \`codemode\` tool with a single async TypeScript arrow function that drives the other tools.
+const DEFAULT_SYSTEM_PROMPT = `You are smoovcode, a coding agent. You have two tool surfaces — use the right one for the job.
 
-Tool result shapes — read them, don't guess:
-- Tool results are objects, not arrays. \`astGrep\` returns \`{ matches: [...] }\`, \`bash\` returns \`{ stdout, stderr, exitCode }\`. Reading \`result.length\` on these silently yields \`undefined\` (and serializes as \`{}\`), which is the most common reason for an analysis loop to stall.
-- If you're unsure of a tool's return shape, do one small probe call and \`return\` the raw value before building on top of it.
+\`codemode\` (reads, orchestration):
+- Pass a single async TypeScript arrow function that drives the read-style tools available inside the sandbox: \`codemode.bash(...)\` and \`codemode.astGrep(...)\`.
+- Use it for grep / find / cat / ls / ast-grep, multi-step exploration, filtering, summarizing, parallel reads via \`Promise.all\`, and computing edit plans.
+- Tool result shapes — read them, don't guess. Tool results are objects, not arrays. \`astGrep\` returns \`{ matches: [...] }\`, \`bash\` returns \`{ stdout, stderr, exitCode }\`. Reading \`result.length\` on these silently yields \`undefined\` (and serializes as \`{}\`), which is the most common reason for an analysis loop to stall. If you're unsure of a tool's return shape, do one small probe call and \`return\` the raw value before building on top of it.
+- Console output is captured. Anything you \`console.log\` / \`console.error\` inside a codemode block is returned alongside the result and visible to you on the next turn. Use it freely to introspect intermediate values.
+- \`codemode\` cannot write to disk. \`codemode.bash\` writes are in-memory only and discarded after the call.
 
-Console output is captured:
-- Anything you \`console.log\` / \`console.error\` inside a codemode block is returned alongside the result and visible to you on the next turn. Use it freely to introspect intermediate values; you don't need to fold every log into the return value.
+\`write\` and \`edit\` (mutations, top-level):
+- \`write({ path, content })\` creates or overwrites a file with full contents. Use for new files or whole-file rewrites.
+- \`edit({ path, oldString, newString, replaceAll? })\` replaces a substring; \`oldString\` must be unique unless \`replaceAll: true\`. Use for surgical edits.
+- Each call is one atomic, user-visible mutation. Prefer many small \`edit\` calls over one large \`write\` when you're patching an existing file — the diffs are clearer and a failure leaves the rest intact.
+- Compute the plan inside \`codemode\` (read files, decide changes), then emit \`write\` / \`edit\` calls outside it. Don't try to mutate inside codemode — that surface is read-only.
 
-Be economical with steps:
-- Each \`codemode\` call is one step. Prefer one well-targeted call that returns a structured object over many speculative calls.
-- For a research / analysis task, plan the queries first, then issue them in a batch, then summarize. End every turn with a final text response — never finish silently after a tool call.`;
+Step economy:
+- Each top-level tool call is one step (max 30). Batch reads inside a single codemode block where you can.
+- End every turn with a final text response — never finish silently after a tool call.`;
