@@ -1,15 +1,43 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { stdin, stdout } from "node:process";
 import readline from "node:readline/promises";
-import { Agent, type Executor } from "@smoovcode/agent";
+import { Agent, type Executor, type HostApprover } from "@smoovcode/agent";
 
 const DIM = "\x1b[2m";
+const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
+
+/**
+ * Walk up from `start` to find the nearest ancestor that looks like a project
+ * root (contains `.smoov/` or `.git/`). The agent uses this as the OverlayFs
+ * root so the sandbox covers the whole repo rather than just the CLI cwd.
+ */
+function findProjectRoot(start: string): string {
+  let dir = start;
+  while (true) {
+    if (existsSync(join(dir, ".smoov")) || existsSync(join(dir, ".git"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return start;
+    dir = parent;
+  }
+}
 
 export async function runLoop(executor: Executor, model?: string) {
   const rl = readline.createInterface({ input: stdin, output: stdout });
-  const agent = new Agent({ executor, model });
+  const projectRoot = findProjectRoot(process.cwd());
 
-  stdout.write(`smoovcode (backend: ${executor.name}) — ctrl-d to exit\n`);
+  const approveHost: HostApprover = async ({ argv, reason }) => {
+    const display = argv.map((a) => (/[^A-Za-z0-9_./-]/.test(a) ? JSON.stringify(a) : a)).join(" ");
+    stdout.write(`\n${YELLOW}host execution requested:${RESET} ${display}\n`);
+    if (reason) stdout.write(`${DIM}reason: ${reason}${RESET}\n`);
+    const answer = (await rl.question("approve? [y/N] ")).trim().toLowerCase();
+    return answer === "y" || answer === "yes";
+  };
+
+  const agent = new Agent({ executor, model, cwd: projectRoot, approveHost });
+
+  stdout.write(`smoovcode (backend: ${executor.name}, root: ${projectRoot}) — ctrl-d to exit\n`);
 
   try {
     while (true) {

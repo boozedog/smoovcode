@@ -86,7 +86,7 @@ describe("runLoop", () => {
 
   test("prints the banner with the executor name on startup", async () => {
     await runLoop(stubExecutor);
-    expect(writes.join("")).toMatch(/smoovcode \(backend: stub\) — ctrl-d to exit/);
+    expect(writes.join("")).toMatch(/smoovcode \(backend: stub, root: .+\) — ctrl-d to exit/);
   });
 
   test("closes the readline interface in the finally block", async () => {
@@ -195,12 +195,18 @@ describe("runLoop", () => {
     scriptedAnswers = [];
     await runLoop(stubExecutor, "gpt-x");
     expect(agentConstructorOpts).toHaveLength(1);
-    expect(agentConstructorOpts[0]).toEqual({ executor: stubExecutor, model: "gpt-x" });
+    expect(agentConstructorOpts[0]).toMatchObject({ executor: stubExecutor, model: "gpt-x" });
+    expect(typeof (agentConstructorOpts[0] as { approveHost?: unknown }).approveHost).toBe(
+      "function",
+    );
   });
 
   test("omits model on the Agent when none is supplied", async () => {
     scriptedAnswers = [];
     await runLoop(stubExecutor);
-    expect(agentConstructorOpts[0]).toEqual({ executor: stubExecutor, model: undefined });
+    expect(agentConstructorOpts[0]).toMatchObject({ executor: stubExecutor, model: undefined });
+    expect(typeof (agentConstructorOpts[0] as { approveHost?: unknown }).approveHost).toBe(
+      "function",
+    );
   });
 });

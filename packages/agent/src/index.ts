@@ -9,3 +9,10 @@ export { LocalExecutor } from "./executors/local.ts";
 export { QuickJSExecutor } from "./executors/quickjs.ts";
 export { createTools } from "./tools.ts";
 export type { CreateToolsOptions } from "./tools.ts";
+export type {
+  HostApprovalRequest,
+  HostApprover,
+  HostExecOptions,
+  HostExecResult,
+  HostSpawner,
+} from "./host-exec.ts";

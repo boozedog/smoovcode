@@ -3,6 +3,7 @@ import { createCodeTool } from "@cloudflare/codemode/ai";
 import { type ModelMessage, stepCountIs, streamText } from "ai";
 import { type ApiMode, detectApiMode } from "./api-mode.ts";
 import type { Executor } from "./executor.ts";
+import type { HostApprover } from "./host-exec.ts";
 import { createTools } from "./tools.ts";
 
 const baseURL = process.env.SMOOV_BASE_URL ?? "https://api.openai.com/v1";
@@ -35,6 +36,13 @@ export interface AgentOptions {
   executor: Executor;
   model?: string;
   system?: string;
+  /** Project root exposed to the tools. Defaults to process.cwd(). */
+  cwd?: string;
+  /**
+   * Approval callback for host execution. Called once per host argv before
+   * spawn. Defaults to deny-all when omitted.
+   */
+  approveHost?: HostApprover;
 }
 
 export type AgentEvent =
@@ -54,7 +62,10 @@ export class Agent {
     this.history.push({ role: "user", content: userMessage });
 
     const codemode = createCodeTool({
-      tools: createTools(),
+      tools: createTools({
+        ...(this.opts.cwd !== undefined ? { cwd: this.opts.cwd } : {}),
+        ...(this.opts.approveHost ? { approveHost: this.opts.approveHost } : {}),
+      }),
       executor: this.opts.executor,
     });
 

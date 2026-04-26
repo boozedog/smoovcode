@@ -27,3 +27,8 @@ vp run -r build
 ```bash
 vp run dev
 ```
+
+## Safety envelope
+
+The agent's sandboxing, host-allowlist, and edit/write semantics are
+documented in [SECURITY.md](./SECURITY.md).
