@@ -86,3 +86,16 @@ For GitHub Actions, consider using [`voidzero-dev/setup-vp`](https://github.com/
 - [ ] Run `vp install` after pulling remote changes and before getting started.
 - [ ] Run `vp check` and `vp test` to validate changes.
 <!--VITE PLUS END-->
+
+# Test-Driven Development
+
+All new functionality must be developed test-first. Before writing any implementation code:
+
+1. Write one or more tests that describe the desired behavior.
+2. Run `vp test` and confirm the tests **fail** for the right reason.
+3. Implement the minimum code needed to make the tests pass.
+4. Refactor with the tests as a safety net.
+
+This applies to every new function, component, route, CLI command, and bug fix (a bug fix starts with a failing test that reproduces the bug). Import test utilities from `vite-plus/test`, never from `vitest` directly.
+
+Coverage expectation: everything is testable and everything gets tested. If something feels untestable, that's a design signal — restructure it rather than skip the test.

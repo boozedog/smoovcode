@@ -13,7 +13,8 @@
     "build": "vp pack",
     "dev": "tsx --env-file-if-exists=../../.env src/index.ts",
     "start": "node --env-file-if-exists=../../.env dist/index.mjs",
-    "check": "vp check"
+    "check": "vp check",
+    "test": "vp test"
   },
   "dependencies": {
     "@smoovcode/agent": "*"
