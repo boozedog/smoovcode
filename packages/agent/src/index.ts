@@ -7,4 +7,5 @@ export type { ExecuteResult, Executor, Providers, ResolvedProvider, ToolFns } fr
 export { CloudflareExecutor } from "./executors/cloudflare.ts";
 export { LocalExecutor } from "./executors/local.ts";
 export { QuickJSExecutor } from "./executors/quickjs.ts";
-export { tools } from "./tools.ts";
+export { createTools } from "./tools.ts";
+export type { CreateToolsOptions } from "./tools.ts";

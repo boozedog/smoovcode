@@ -3,7 +3,7 @@ import { createCodeTool } from "@cloudflare/codemode/ai";
 import { type ModelMessage, stepCountIs, streamText } from "ai";
 import { type ApiMode, detectApiMode } from "./api-mode.ts";
 import type { Executor } from "./executor.ts";
-import { tools } from "./tools.ts";
+import { createTools } from "./tools.ts";
 
 const baseURL = process.env.SMOOV_BASE_URL ?? "https://api.openai.com/v1";
 const apiKey = process.env.SMOOV_API_KEY ?? process.env.OPENAI_API_KEY;
@@ -54,7 +54,7 @@ export class Agent {
     this.history.push({ role: "user", content: userMessage });
 
     const codemode = createCodeTool({
-      tools,
+      tools: createTools(),
       executor: this.opts.executor,
     });
 
