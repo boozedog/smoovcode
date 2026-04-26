@@ -1,5 +1,6 @@
 import { Text } from "ink";
 import React from "react";
+import { ensureHighlighted, getHighlighted } from "./highlight-cache.ts";
 
 /**
  * Languages we support today via @speed-highlight/core. Adding a new one is
@@ -14,30 +15,31 @@ interface HighlightedCodeProps {
 }
 
 /**
- * Async syntax highlight without `useEffect`: render the raw text first, then
- * swap to the ANSI-highlighted version once it resolves. Cleanup guards the
- * setState against unmounts and stale `code` props.
+ * Renders syntax-highlighted code. The highlighter is async, so we read from a
+ * shared cache synchronously: a hit renders the ANSI version on the very first
+ * frame (which is what `<Static>` requires — it commits items once). On a miss
+ * we render raw text, kick off the async fill, and `setRendered` swaps in the
+ * highlighted version when it arrives. The setState path only matters in live
+ * regions where re-renders are honored; `<Static>` items rely on the cache
+ * being pre-warmed by `LiveTurn` before the block is emitted.
  */
 export function HighlightedCode({ code, lang }: HighlightedCodeProps): React.ReactElement {
-  const [rendered, setRendered] = React.useState(code);
+  const cached = getHighlighted(code, lang);
+  const [rendered, setRendered] = React.useState(cached ?? code);
   const lastInputRef = React.useRef<{ code: string; lang: Lang } | null>(null);
 
-  // Trigger highlight whenever code/lang change. We compare against a ref so we
-  // only schedule when the inputs actually move, and we drop late results that
-  // no longer match the current props.
   if (
     lastInputRef.current === null ||
     lastInputRef.current.code !== code ||
     lastInputRef.current.lang !== lang
   ) {
     lastInputRef.current = { code, lang };
-    // Reset shown text to raw so callers see the latest content immediately.
-    if (rendered !== code) setRendered(code);
-    void (async () => {
-      try {
-        const { highlightText } = await import("@speed-highlight/core/terminal");
-        const out = await highlightText(code, lang);
-        // Drop the result if a newer call has superseded us.
+    const cachedNow = getHighlighted(code, lang);
+    if (cachedNow !== undefined) {
+      if (rendered !== cachedNow) setRendered(cachedNow);
+    } else {
+      if (rendered !== code) setRendered(code);
+      void ensureHighlighted(code, lang).then((out) => {
         if (
           lastInputRef.current &&
           lastInputRef.current.code === code &&
@@ -45,10 +47,8 @@ export function HighlightedCode({ code, lang }: HighlightedCodeProps): React.Rea
         ) {
           setRendered(out);
         }
-      } catch {
-        // Unknown language / parser error: leave the raw text in place.
-      }
-    })();
+      });
+    }
   }
 
   return React.createElement(Text, null, rendered);

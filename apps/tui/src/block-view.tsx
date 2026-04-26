@@ -21,13 +21,17 @@ export function BlockView({ block }: BlockViewProps): React.ReactElement {
   }
 }
 
-function isCodemodeInput(x: unknown): x is { code: string } {
+export function isCodemodeInput(x: unknown): x is { code: string } {
   return (
     typeof x === "object" &&
     x !== null &&
     "code" in x &&
     typeof (x as { code: unknown }).code === "string"
   );
+}
+
+export function formatCodemodeResult(output: unknown): string {
+  return `→ ${JSON.stringify(extractResult(output), null, 2)}`;
 }
 
 function ToolCallView({ block }: { block: ToolCallBlock }): React.ReactElement {
@@ -47,7 +51,7 @@ function ToolCallView({ block }: { block: ToolCallBlock }): React.ReactElement {
       React.createElement(HighlightedCode, { code: block.input.code, lang: "ts" }),
       block.status === "done"
         ? React.createElement(HighlightedCode, {
-            code: `→ ${JSON.stringify(extractResult(block.output), null, 2)}`,
+            code: formatCodemodeResult(block.output),
             lang: "json",
           })
         : null,

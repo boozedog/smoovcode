@@ -1,8 +1,10 @@
-import type { Block } from "@smoovcode/ui-core";
+import { type Block, type ToolCallBlock } from "@smoovcode/ui-core";
 import { type AgentLike, useAgentSession } from "@smoovcode/ui-react";
-import { Box } from "ink";
+import { Box, Text } from "ink";
 import React from "react";
-import { BlockView } from "./block-view.tsx";
+import { formatCodemodeResult, isCodemodeInput } from "./block-view.tsx";
+import { ensureHighlighted } from "./highlight-cache.ts";
+import { Spinner } from "./spinner.tsx";
 
 interface LiveTurnProps {
   agent: AgentLike;
@@ -27,9 +29,31 @@ function isBlockFinal(b: Block): boolean {
 }
 
 /**
- * Live region for one in-progress turn. Emits each block to App as soon as
- * it reaches a terminal state, so the App can promote it into <Static>
- * scrollback. The component itself only renders the still-streaming tail.
+ * Pre-warm the highlight cache for every string `BlockView` will pass to
+ * `HighlightedCode` for this block. Once this resolves, the block can render
+ * inside `<Static>` and pick up the ANSI version on its first frame.
+ */
+async function ensureBlockHighlighted(b: Block): Promise<void> {
+  if (b.kind === "text") {
+    await ensureHighlighted(b.text, "md");
+    return;
+  }
+  if (b.kind === "tool-call" && b.name === "codemode" && isCodemodeInput(b.input)) {
+    const tasks: Promise<unknown>[] = [ensureHighlighted(b.input.code, "ts")];
+    if (b.status === "done") {
+      tasks.push(ensureHighlighted(formatCodemodeResult(b.output), "json"));
+    }
+    await Promise.all(tasks);
+  }
+}
+
+/**
+ * Live region for one in-progress turn. Deliberately bounded to a fixed
+ * number of lines so it can never exceed terminal height: a single "thinking"
+ * spinner line plus one indented spinner-prefixed line per currently-running
+ * tool-call. Streaming text/reasoning are not rendered live — they emit to
+ * `<Static>` once finalized via `onBlockFinalize`. (If you want to watch the
+ * model think token-by-token, use the CLI.)
  */
 export function LiveTurn({
   agent,
@@ -45,6 +69,9 @@ export function LiveTurn({
 
   const emittedRef = React.useRef<Set<string>>(new Set());
   const turnDoneRef = React.useRef(false);
+  // Serialize emits so blocks reach `<Static>` in turn order even when their
+  // pre-warm awaits resolve at different times.
+  const emitChainRef = React.useRef<Promise<void>>(Promise.resolve());
 
   if (turn) {
     for (const b of turn.blocks) {
@@ -52,7 +79,10 @@ export function LiveTurn({
         emittedRef.current.add(b.id);
         const block = b;
         const turnId = turn.id;
-        queueMicrotask(() => onBlockFinalize(block, turnId));
+        emitChainRef.current = emitChainRef.current.then(async () => {
+          await ensureBlockHighlighted(block);
+          onBlockFinalize(block, turnId);
+        });
       }
     }
   }
@@ -60,21 +90,46 @@ export function LiveTurn({
   if (session.done && finalized && !turnDoneRef.current) {
     turnDoneRef.current = true;
     const turnId = finalized.id;
-    queueMicrotask(() => onTurnDone(turnId));
+    emitChainRef.current = emitChainRef.current.then(() => {
+      onTurnDone(turnId);
+    });
   }
   if (session.error && !turnDoneRef.current) {
     turnDoneRef.current = true;
-    queueMicrotask(() => onError?.(session.error));
+    const err = session.error;
+    emitChainRef.current = emitChainRef.current.then(() => {
+      onError?.(err);
+    });
   }
 
-  if (!turn) return null;
+  if (session.done || session.error) return null;
 
-  const tail = turn.blocks.filter((b) => !isBlockFinal(b));
-  if (tail.length === 0) return null;
+  const runningToolCalls: ToolCallBlock[] = turn
+    ? turn.blocks.filter(
+        (b): b is ToolCallBlock => b.kind === "tool-call" && b.status === "running",
+      )
+    : [];
 
   return React.createElement(
     Box,
     { flexDirection: "column" },
-    tail.map((b) => React.createElement(BlockView, { key: b.id, block: b })),
+    React.createElement(
+      Box,
+      { key: "thinking" },
+      React.createElement(Spinner, null),
+      React.createElement(
+        Box,
+        { marginLeft: 1 },
+        React.createElement(Text, { dimColor: true }, "thinking"),
+      ),
+    ),
+    ...runningToolCalls.map((b) =>
+      React.createElement(
+        Box,
+        { key: b.id, marginLeft: 2 },
+        React.createElement(Spinner, null),
+        React.createElement(Box, { marginLeft: 1 }, React.createElement(Text, null, `[${b.name}]`)),
+      ),
+    ),
   );
 }
