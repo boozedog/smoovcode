@@ -2,7 +2,12 @@ import { type Block, type ToolCallBlock } from "@smoovcode/ui-core";
 import { type AgentLike, useAgentSession } from "@smoovcode/ui-react";
 import { Box, Text } from "ink";
 import React from "react";
-import { formatCodemodeResult, isCodemodeInput } from "./block-view.tsx";
+import {
+  formatCodemodeResult,
+  inferLangFromPath,
+  isCodemodeInput,
+  isWriteInput,
+} from "./block-view.tsx";
 import { ensureHighlighted } from "./highlight-cache.ts";
 import { Spinner } from "./spinner.tsx";
 
@@ -38,12 +43,18 @@ async function ensureBlockHighlighted(b: Block): Promise<void> {
     await ensureHighlighted(b.text, "md");
     return;
   }
-  if (b.kind === "tool-call" && b.name === "codemode" && isCodemodeInput(b.input)) {
+  if (b.kind !== "tool-call") return;
+  if (b.name === "codemode" && isCodemodeInput(b.input)) {
     const tasks: Promise<unknown>[] = [ensureHighlighted(b.input.code, "ts")];
     if (b.status === "done") {
       tasks.push(ensureHighlighted(formatCodemodeResult(b.output), "json"));
     }
     await Promise.all(tasks);
+    return;
+  }
+  if (b.name === "write" && isWriteInput(b.input)) {
+    const lang = inferLangFromPath(b.input.path);
+    if (lang) await ensureHighlighted(b.input.content, lang);
   }
 }
 

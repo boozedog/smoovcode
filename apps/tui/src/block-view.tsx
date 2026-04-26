@@ -1,7 +1,7 @@
 import type { Block, ToolCallBlock } from "@smoovcode/ui-core";
 import { Box, Text } from "ink";
 import React from "react";
-import { HighlightedCode } from "./highlighted-code.tsx";
+import { HighlightedCode, type Lang } from "./highlighted-code.tsx";
 import { Spinner } from "./spinner.tsx";
 
 interface BlockViewProps {
@@ -30,35 +30,49 @@ export function isCodemodeInput(x: unknown): x is { code: string } {
   );
 }
 
+export function isWriteInput(x: unknown): x is { path: string; content: string } {
+  if (typeof x !== "object" || x === null) return false;
+  const o = x as { path?: unknown; content?: unknown };
+  return typeof o.path === "string" && typeof o.content === "string";
+}
+
+export function isEditInput(
+  x: unknown,
+): x is { path: string; oldString: string; newString: string } {
+  if (typeof x !== "object" || x === null) return false;
+  const o = x as { path?: unknown; oldString?: unknown; newString?: unknown };
+  return (
+    typeof o.path === "string" && typeof o.oldString === "string" && typeof o.newString === "string"
+  );
+}
+
 export function formatCodemodeResult(output: unknown): string {
   return `→ ${JSON.stringify(extractResult(output), null, 2)}`;
 }
 
+/**
+ * Pick a syntax-highlight language from a file extension, or `null` when we
+ * don't have a loader for it (caller falls back to plain text).
+ */
+export function inferLangFromPath(path: string): Lang | null {
+  const ext = path.toLowerCase().split(".").pop() ?? "";
+  if (ext === "ts" || ext === "tsx") return "ts";
+  if (ext === "js" || ext === "jsx" || ext === "mjs" || ext === "cjs") return "js";
+  if (ext === "json") return "json";
+  if (ext === "md" || ext === "mdx") return "md";
+  if (ext === "go") return "go";
+  return null;
+}
+
 function ToolCallView({ block }: { block: ToolCallBlock }): React.ReactElement {
-  // Codemode: render the TS source the model wrote, plus a JSON-pretty result.
   if (block.name === "codemode" && isCodemodeInput(block.input)) {
-    return React.createElement(
-      Box,
-      { flexDirection: "column" },
-      React.createElement(
-        Box,
-        null,
-        React.createElement(Text, { color: "magenta" }, `[${block.name}]`),
-        block.status === "running"
-          ? React.createElement(Box, { marginLeft: 1 }, React.createElement(Spinner, null))
-          : null,
-      ),
-      React.createElement(HighlightedCode, { code: block.input.code, lang: "ts" }),
-      block.status === "done"
-        ? React.createElement(HighlightedCode, {
-            code: formatCodemodeResult(block.output),
-            lang: "json",
-          })
-        : null,
-      block.status === "error"
-        ? React.createElement(Text, { color: "red" }, `✗ ${block.error}`)
-        : null,
-    );
+    return React.createElement(CodemodeView, { block, input: block.input });
+  }
+  if (block.name === "write" && isWriteInput(block.input)) {
+    return React.createElement(WriteView, { block, input: block.input });
+  }
+  if (block.name === "edit" && isEditInput(block.input)) {
+    return React.createElement(EditView, { block, input: block.input });
   }
 
   // Default: single-line rendering, with a leading spinner while running.
@@ -80,6 +94,137 @@ function ToolCallView({ block }: { block: ToolCallBlock }): React.ReactElement {
   return React.createElement(Text, null, head + tail);
 }
 
+function CodemodeView({
+  block,
+  input,
+}: {
+  block: ToolCallBlock;
+  input: { code: string };
+}): React.ReactElement {
+  return React.createElement(
+    Box,
+    { flexDirection: "column" },
+    React.createElement(
+      Box,
+      null,
+      React.createElement(Text, { color: "magenta" }, `[${block.name}]`),
+      block.status === "running"
+        ? React.createElement(Box, { marginLeft: 1 }, React.createElement(Spinner, null))
+        : null,
+    ),
+    React.createElement(HighlightedCode, { code: input.code, lang: "ts" }),
+    block.status === "done"
+      ? React.createElement(HighlightedCode, {
+          code: formatCodemodeResult(block.output),
+          lang: "json",
+        })
+      : null,
+    block.status === "error"
+      ? React.createElement(Text, { color: "red" }, `✗ ${block.error}`)
+      : null,
+  );
+}
+
+function WriteView({
+  block,
+  input,
+}: {
+  block: ToolCallBlock;
+  input: { path: string; content: string };
+}): React.ReactElement {
+  const lang = inferLangFromPath(input.path);
+  const bytes = extractBytes(block.output);
+  return React.createElement(
+    Box,
+    { flexDirection: "column" },
+    React.createElement(
+      Box,
+      null,
+      React.createElement(Text, { color: "magenta" }, `[${block.name}]`),
+      React.createElement(
+        Box,
+        { marginLeft: 1 },
+        React.createElement(Text, { color: "cyan" }, input.path),
+      ),
+      block.status === "running"
+        ? React.createElement(Box, { marginLeft: 1 }, React.createElement(Spinner, null))
+        : null,
+    ),
+    lang
+      ? React.createElement(HighlightedCode, { code: input.content, lang })
+      : React.createElement(Text, null, input.content),
+    block.status === "done" && bytes !== null
+      ? React.createElement(Text, { dimColor: true }, `→ wrote ${bytes} bytes`)
+      : null,
+    block.status === "error"
+      ? React.createElement(Text, { color: "red" }, `✗ ${block.error}`)
+      : null,
+  );
+}
+
+function EditView({
+  block,
+  input,
+}: {
+  block: ToolCallBlock;
+  input: { path: string; oldString: string; newString: string };
+}): React.ReactElement {
+  const oldDiff = input.oldString
+    .split("\n")
+    .map((l) => `- ${l}`)
+    .join("\n");
+  const newDiff = input.newString
+    .split("\n")
+    .map((l) => `+ ${l}`)
+    .join("\n");
+  const replacements = extractReplacements(block.output);
+  return React.createElement(
+    Box,
+    { flexDirection: "column" },
+    React.createElement(
+      Box,
+      null,
+      React.createElement(Text, { color: "magenta" }, `[${block.name}]`),
+      React.createElement(
+        Box,
+        { marginLeft: 1 },
+        React.createElement(Text, { color: "cyan" }, input.path),
+      ),
+      block.status === "running"
+        ? React.createElement(Box, { marginLeft: 1 }, React.createElement(Spinner, null))
+        : null,
+    ),
+    React.createElement(Text, { color: "red" }, oldDiff),
+    React.createElement(Text, { color: "green" }, newDiff),
+    block.status === "done" && replacements !== null
+      ? React.createElement(
+          Text,
+          { dimColor: true },
+          `→ ${replacements} replacement${replacements === 1 ? "" : "s"}`,
+        )
+      : null,
+    block.status === "error"
+      ? React.createElement(Text, { color: "red" }, `✗ ${block.error}`)
+      : null,
+  );
+}
+
 function extractResult(o: unknown): unknown {
   return o && typeof o === "object" && "result" in o ? (o as { result: unknown }).result : o;
+}
+
+function extractBytes(o: unknown): number | null {
+  if (o && typeof o === "object" && "bytes" in o) {
+    const b = (o as { bytes: unknown }).bytes;
+    if (typeof b === "number") return b;
+  }
+  return null;
+}
+
+function extractReplacements(o: unknown): number | null {
+  if (o && typeof o === "object" && "replacements" in o) {
+    const r = (o as { replacements: unknown }).replacements;
+    if (typeof r === "number") return r;
+  }
+  return null;
 }
