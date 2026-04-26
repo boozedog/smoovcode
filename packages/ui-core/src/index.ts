@@ -1,8 +1,13 @@
 export {
+  type Block,
   type ConversationEvent,
   type ConversationState,
+  type ErrorBlock,
   initialConversation,
+  type ReasoningBlock,
   reduceConversation,
+  type TextBlock,
+  type ToolCallBlock,
   type ToolCallEntry,
   type ToolCallStatus,
   type Turn,

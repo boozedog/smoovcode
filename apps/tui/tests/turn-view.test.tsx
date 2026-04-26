@@ -1,19 +1,15 @@
-import type { Turn } from "@smoovcode/ui-core";
+import type { Block, Turn } from "@smoovcode/ui-core";
 import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, test } from "vite-plus/test";
 import { TurnView } from "../src/turn-view.tsx";
 
-function makeTurn(partial: Partial<Turn> = {}): Turn {
+function makeTurn(blocks: Block[] = []): Turn {
   return {
     id: 0,
     userMessage: "hello",
-    text: "",
-    reasoning: "",
-    toolCalls: [],
-    errors: [],
+    blocks,
     status: "streaming",
-    ...partial,
   };
 }
 
@@ -23,88 +19,23 @@ describe("TurnView", () => {
     expect(lastFrame()).toContain("> hello");
   });
 
-  test("renders accumulated text", () => {
-    const { lastFrame } = render(
-      React.createElement(TurnView, { turn: makeTurn({ text: "the answer" }) }),
-    );
-    expect(lastFrame()).toContain("the answer");
-  });
-
-  test("renders reasoning prefixed with `thinking:`", () => {
-    const { lastFrame } = render(
-      React.createElement(TurnView, { turn: makeTurn({ reasoning: "consider" }) }),
-    );
-    expect(lastFrame()).toContain("thinking: consider");
-  });
-
-  test("renders tool calls with name, input, and result on completion", () => {
-    const turn = makeTurn({
-      toolCalls: [
-        {
-          id: "tc-0-0",
-          name: "echo",
-          input: { x: 1 },
-          status: "done",
-          output: { result: "ok" },
-        },
-      ],
-    });
+  test("renders one BlockView per block in order", () => {
+    const turn = makeTurn([
+      { kind: "text", id: "b-0-0", text: "answer one", status: "done" },
+      { kind: "text", id: "b-0-1", text: "answer two", status: "streaming" },
+    ]);
     const { lastFrame } = render(React.createElement(TurnView, { turn }));
     const frame = lastFrame() ?? "";
-    expect(frame).toContain('[echo] {"x":1}');
-    expect(frame).toContain('→ "ok"');
+    const i1 = frame.indexOf("answer one");
+    const i2 = frame.indexOf("answer two");
+    expect(i1).toBeGreaterThanOrEqual(0);
+    expect(i2).toBeGreaterThan(i1);
   });
 
-  test("renders tool errors with the ✗ marker", () => {
-    const turn = makeTurn({
-      toolCalls: [
-        {
-          id: "tc-0-0",
-          name: "t",
-          input: {},
-          status: "error",
-          error: "boom",
-        },
-      ],
-    });
-    const { lastFrame } = render(React.createElement(TurnView, { turn }));
-    expect(lastFrame()).toContain("[t] {} ✗ boom");
-  });
-
-  test("renders codemode tool calls with the TS source highlighted", () => {
-    const turn = makeTurn({
-      toolCalls: [
-        {
-          id: "tc-0-0",
-          name: "codemode",
-          input: { code: 'const x = "hello";' },
-          status: "done",
-          output: { result: { ok: true } },
-        },
-      ],
-    });
-    const { lastFrame } = render(React.createElement(TurnView, { turn }));
+  test("renders an empty turn as just the user prompt", () => {
+    const { lastFrame } = render(React.createElement(TurnView, { turn: makeTurn() }));
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("[codemode]");
-    expect(frame).toContain('const x = "hello";');
-    expect(frame).toContain('"ok"');
-  });
-
-  test("renders markdown text content", () => {
-    const { lastFrame } = render(
-      React.createElement(TurnView, {
-        turn: makeTurn({ text: "# heading\nsome **bold** text" }),
-      }),
-    );
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("heading");
-    expect(frame).toContain("bold");
-  });
-
-  test("renders [error] lines for stream-level errors", () => {
-    const { lastFrame } = render(
-      React.createElement(TurnView, { turn: makeTurn({ errors: ["oops"] }) }),
-    );
-    expect(lastFrame()).toContain("[error] oops");
+    expect(frame).toContain("> hello");
+    expect(frame).not.toContain("[error]");
   });
 });

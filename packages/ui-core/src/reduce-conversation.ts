@@ -1,6 +1,21 @@
 export type ToolCallStatus = "running" | "done" | "error";
 
-export interface ToolCallEntry {
+export interface TextBlock {
+  kind: "text";
+  id: string;
+  text: string;
+  status: "streaming" | "done";
+}
+
+export interface ReasoningBlock {
+  kind: "reasoning";
+  id: string;
+  text: string;
+  status: "streaming" | "done";
+}
+
+export interface ToolCallBlock {
+  kind: "tool-call";
   id: string;
   name: string;
   input: unknown;
@@ -9,13 +24,25 @@ export interface ToolCallEntry {
   status: ToolCallStatus;
 }
 
+export interface ErrorBlock {
+  kind: "error";
+  id: string;
+  error: string;
+  status: "done";
+}
+
+export type Block = TextBlock | ReasoningBlock | ToolCallBlock | ErrorBlock;
+
+/**
+ * Back-compat alias so consumers that still import `ToolCallEntry` keep working.
+ * New code should use `ToolCallBlock`.
+ */
+export type ToolCallEntry = ToolCallBlock;
+
 export interface Turn {
   id: number;
   userMessage: string;
-  text: string;
-  reasoning: string;
-  toolCalls: ToolCallEntry[];
-  errors: string[];
+  blocks: Block[];
   status: "streaming" | "done";
 }
 
@@ -42,19 +69,73 @@ function nextTurnId(state: ConversationState): number {
 }
 
 function newTurn(id: number, userMessage: string): Turn {
-  return {
-    id,
-    userMessage,
-    text: "",
-    reasoning: "",
-    toolCalls: [],
-    errors: [],
-    status: "streaming",
-  };
+  return { id, userMessage, blocks: [], status: "streaming" };
 }
 
-function finalize(turn: Turn): Turn {
-  return { ...turn, status: "done" };
+function blockId(turn: Turn): string {
+  return `b-${turn.id}-${turn.blocks.length}`;
+}
+
+/**
+ * Close any streaming text/reasoning blocks. Tool-calls are intentionally left
+ * alone — they can legitimately be in flight in parallel with new blocks
+ * appearing (e.g. a model that starts speaking again before a tool returns).
+ */
+function closeStreamingText(blocks: Block[]): Block[] {
+  return blocks.map((b) => {
+    if (b.kind === "text" && b.status === "streaming") return { ...b, status: "done" };
+    if (b.kind === "reasoning" && b.status === "streaming") return { ...b, status: "done" };
+    return b;
+  });
+}
+
+/**
+ * End-of-turn close: also force any still-running tool-call to done. Used only
+ * by `finalizeTurn`, never on intra-turn boundaries.
+ */
+function closeAllStreaming(blocks: Block[]): Block[] {
+  return closeStreamingText(blocks).map((b) =>
+    b.kind === "tool-call" && b.status === "running" ? { ...b, status: "done" } : b,
+  );
+}
+
+function finalizeTurn(turn: Turn): Turn {
+  return { ...turn, blocks: closeAllStreaming(turn.blocks), status: "done" };
+}
+
+function appendDelta(live: Turn, kind: "text" | "reasoning", delta: string): { blocks: Block[] } {
+  const last = live.blocks[live.blocks.length - 1];
+  if (last && last.kind === kind && last.status === "streaming") {
+    const updated: Block = { ...last, text: last.text + delta };
+    const next = live.blocks.slice();
+    next[next.length - 1] = updated;
+    return { blocks: next };
+  }
+  // Start a new streaming block; first close any other streaming text/reasoning.
+  const finalized = closeStreamingText(live.blocks);
+  const fresh: Block =
+    kind === "text"
+      ? {
+          kind: "text",
+          id: blockId({ ...live, blocks: finalized }),
+          text: delta,
+          status: "streaming",
+        }
+      : {
+          kind: "reasoning",
+          id: blockId({ ...live, blocks: finalized }),
+          text: delta,
+          status: "streaming",
+        };
+  return { blocks: [...finalized, fresh] };
+}
+
+function lastRunningToolCallIndex(blocks: Block[], name: string): number {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    if (b && b.kind === "tool-call" && b.name === name && b.status === "running") return i;
+  }
+  return -1;
 }
 
 export function reduceConversation(
@@ -63,7 +144,7 @@ export function reduceConversation(
 ): ConversationState {
   if (event.type === "turn-start") {
     if (state.live) {
-      const finalized = [...state.finalized, finalize(state.live)];
+      const finalized = [...state.finalized, finalizeTurn(state.live)];
       return { finalized, live: newTurn(nextTurnId({ finalized, live: null }), event.userMessage) };
     }
     return { ...state, live: newTurn(nextTurnId(state), event.userMessage) };
@@ -74,44 +155,51 @@ export function reduceConversation(
 
   switch (event.type) {
     case "turn-end":
-      return { finalized: [...state.finalized, finalize(live)], live: null };
-    case "text":
-      return { ...state, live: { ...live, text: live.text + event.delta } };
-    case "reasoning":
-      return { ...state, live: { ...live, reasoning: live.reasoning + event.delta } };
+      return { finalized: [...state.finalized, finalizeTurn(live)], live: null };
+    case "text": {
+      const { blocks } = appendDelta(live, "text", event.delta);
+      return { ...state, live: { ...live, blocks } };
+    }
+    case "reasoning": {
+      const { blocks } = appendDelta(live, "reasoning", event.delta);
+      return { ...state, live: { ...live, blocks } };
+    }
     case "tool-call": {
-      const id = `tc-${live.id}-${live.toolCalls.length}`;
-      const entry: ToolCallEntry = {
-        id,
+      const finalized = closeStreamingText(live.blocks);
+      const fresh: ToolCallBlock = {
+        kind: "tool-call",
+        id: blockId({ ...live, blocks: finalized }),
         name: event.name,
         input: event.input,
         status: "running",
       };
-      return { ...state, live: { ...live, toolCalls: [...live.toolCalls, entry] } };
+      return { ...state, live: { ...live, blocks: [...finalized, fresh] } };
     }
     case "tool-result": {
-      const idx = lastRunningIndex(live.toolCalls, event.name);
+      const idx = lastRunningToolCallIndex(live.blocks, event.name);
       if (idx === -1) return state;
-      const next = live.toolCalls.slice();
-      next[idx] = { ...next[idx], status: "done", output: event.output };
-      return { ...state, live: { ...live, toolCalls: next } };
+      const target = live.blocks[idx] as ToolCallBlock;
+      const next = live.blocks.slice();
+      next[idx] = { ...target, status: "done", output: event.output };
+      return { ...state, live: { ...live, blocks: next } };
     }
     case "tool-error": {
-      const idx = lastRunningIndex(live.toolCalls, event.name);
+      const idx = lastRunningToolCallIndex(live.blocks, event.name);
       if (idx === -1) return state;
-      const next = live.toolCalls.slice();
-      next[idx] = { ...next[idx], status: "error", error: event.error };
-      return { ...state, live: { ...live, toolCalls: next } };
+      const target = live.blocks[idx] as ToolCallBlock;
+      const next = live.blocks.slice();
+      next[idx] = { ...target, status: "error", error: event.error };
+      return { ...state, live: { ...live, blocks: next } };
     }
-    case "error":
-      return { ...state, live: { ...live, errors: [...live.errors, event.error] } };
+    case "error": {
+      const finalized = closeStreamingText(live.blocks);
+      const fresh: ErrorBlock = {
+        kind: "error",
+        id: blockId({ ...live, blocks: finalized }),
+        error: event.error,
+        status: "done",
+      };
+      return { ...state, live: { ...live, blocks: [...finalized, fresh] } };
+    }
   }
-}
-
-function lastRunningIndex(calls: ToolCallEntry[], name: string): number {
-  for (let i = calls.length - 1; i >= 0; i--) {
-    const c = calls[i];
-    if (c && c.name === name && c.status === "running") return i;
-  }
-  return -1;
 }

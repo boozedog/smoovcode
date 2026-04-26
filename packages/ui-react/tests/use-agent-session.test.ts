@@ -63,9 +63,11 @@ describe("useAgentSession", () => {
       // let the async iterator drain
       await new Promise((r) => setTimeout(r, 20));
     });
-    expect(
-      captured.last?.conversation.live?.text ?? captured.last?.conversation.finalized.at(-1)?.text,
-    ).toBe("hello world");
+    const turn = captured.last?.conversation.live ?? captured.last?.conversation.finalized.at(-1);
+    expect(turn?.blocks).toHaveLength(1);
+    const b = turn?.blocks[0];
+    if (!b || b.kind !== "text") throw new Error("expected single text block");
+    expect(b.text).toBe("hello world");
     expect(captured.last?.done).toBe(true);
   });
 
