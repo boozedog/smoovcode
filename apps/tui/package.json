@@ -1,9 +1,9 @@
 {
-  "name": "smoov-cli",
+  "name": "smoov-tui",
   "version": "0.0.0",
   "private": true,
   "bin": {
-    "smoov": "./dist/index.mjs"
+    "smoov-tui": "./dist/index.mjs"
   },
   "files": [
     "dist"
@@ -11,17 +11,22 @@
   "type": "module",
   "scripts": {
     "build": "vp pack",
-    "dev": "tsx --env-file-if-exists=../../.env src/index.ts",
+    "dev": "tsx --env-file-if-exists=../../.env src/index.tsx",
     "start": "node --env-file-if-exists=../../.env dist/index.mjs",
     "check": "vp check",
     "test": "vp test"
   },
   "dependencies": {
     "@smoovcode/agent": "*",
-    "@smoovcode/ui-core": "*"
+    "@smoovcode/ui-core": "*",
+    "@smoovcode/ui-react": "*",
+    "ink": "^5.0.1",
+    "react": "^18.3.1"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
+    "@types/react": "^18.3.12",
+    "ink-testing-library": "^4.0.0",
     "tsx": "^4.21.0",
     "typescript": "~6.0.2",
     "vite-plus": "latest"

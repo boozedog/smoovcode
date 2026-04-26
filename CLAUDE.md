@@ -99,3 +99,11 @@ All new functionality must be developed test-first. Before writing any implement
 This applies to every new function, component, route, CLI command, and bug fix (a bug fix starts with a failing test that reproduces the bug). Import test utilities from `vite-plus/test`, never from `vitest` directly.
 
 Coverage expectation: everything is testable and everything gets tested. If something feels untestable, that's a design signal — restructure it rather than skip the test.
+
+# React rules
+
+`useEffect`, `useLayoutEffect`, and `useInsertionEffect` are banned with **no exceptions**. The lint rule will catch you.
+
+Use `useMountEffect` from `@smoovcode/ui-react` for one-time external sync (subscriptions, DOM integration, third-party widget lifecycles). Cleanup is supported — return a function from the callback.
+
+For everything else: derive state inline, do work in event handlers, use `key` to reset, and use a data-fetching library if you find yourself fetching in an effect. See https://react.dev/learn/you-might-not-need-an-effect.

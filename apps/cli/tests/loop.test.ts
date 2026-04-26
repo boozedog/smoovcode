@@ -54,6 +54,7 @@ vi.mock("@smoovcode/agent", () => {
         for (const e of events) yield e;
       }
     },
+    findProjectRoot: (start: string) => start,
   };
 });
 
