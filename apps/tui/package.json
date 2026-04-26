@@ -20,6 +20,7 @@
     "@smoovcode/agent": "*",
     "@smoovcode/ui-core": "*",
     "@smoovcode/ui-react": "*",
+    "@speed-highlight/core": "^1.2.15",
     "ink": "^5.0.1",
     "react": "^18.3.1"
   },

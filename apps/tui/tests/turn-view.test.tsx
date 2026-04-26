@@ -71,6 +71,36 @@ describe("TurnView", () => {
     expect(lastFrame()).toContain("[t] {} ✗ boom");
   });
 
+  test("renders codemode tool calls with the TS source highlighted", () => {
+    const turn = makeTurn({
+      toolCalls: [
+        {
+          id: "tc-0-0",
+          name: "codemode",
+          input: { code: 'const x = "hello";' },
+          status: "done",
+          output: { result: { ok: true } },
+        },
+      ],
+    });
+    const { lastFrame } = render(React.createElement(TurnView, { turn }));
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("[codemode]");
+    expect(frame).toContain('const x = "hello";');
+    expect(frame).toContain('"ok"');
+  });
+
+  test("renders markdown text content", () => {
+    const { lastFrame } = render(
+      React.createElement(TurnView, {
+        turn: makeTurn({ text: "# heading\nsome **bold** text" }),
+      }),
+    );
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("heading");
+    expect(frame).toContain("bold");
+  });
+
   test("renders [error] lines for stream-level errors", () => {
     const { lastFrame } = render(
       React.createElement(TurnView, { turn: makeTurn({ errors: ["oops"] }) }),
