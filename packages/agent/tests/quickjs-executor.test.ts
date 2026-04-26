@@ -79,4 +79,30 @@ describe("QuickJSExecutor", () => {
     expect(r.result).toBeUndefined();
     expect(r.error).toBeDefined();
   });
+
+  test("captures console.log into logs", async () => {
+    const r = await new QuickJSExecutor().execute(
+      `async () => { console.log("hi", 1); return "done"; }`,
+      trivial,
+    );
+    expect(r.result).toBe("done");
+    expect(r.logs).toEqual(["hi 1"]);
+  });
+
+  test("captures console.error into logs", async () => {
+    const r = await new QuickJSExecutor().execute(
+      `async () => { console.error("bad"); return null; }`,
+      trivial,
+    );
+    expect(r.logs).toEqual(["bad"]);
+  });
+
+  test("preserves logs even when code throws", async () => {
+    const r = await new QuickJSExecutor().execute(
+      `async () => { console.log("before"); throw new Error("fail"); }`,
+      trivial,
+    );
+    expect(r.error).toMatch(/fail/);
+    expect(r.logs).toEqual(["before"]);
+  });
 });

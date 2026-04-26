@@ -340,7 +340,7 @@ export function createTools(opts: CreateToolsOptions = {}) {
 
     astGrep: tool({
       description:
-        "Structural code search using ast-grep AST patterns (e.g. 'console.log($A)'). Provide either `source` to search a string, or `paths` to recursively search files under cwd. Returns matches with file, text, and range.",
+        "Structural code search using ast-grep AST patterns (e.g. 'console.log($A)'). Provide either `source` to search a string, or `paths` to recursively search files under cwd. Returns `{ matches: Array<{ file, text, range }> }` — read `result.matches`, not `result.length`.",
       inputSchema: z.object({
         pattern: z.string().describe("ast-grep pattern, e.g. 'console.log($ARG)'."),
         language: z.enum(LANG_NAMES).describe("Source language for parsing."),

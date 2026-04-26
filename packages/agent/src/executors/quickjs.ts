@@ -101,24 +101,33 @@ export class QuickJSExecutor implements Executor {
 
     const wrapped = `${codemodeShim}\nexport default await (${code})();`;
 
+    const logs: string[] = [];
+    const capture = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+    const sandboxConsole = { log: capture, error: capture, warn: capture, info: capture };
+
     try {
       const runSandboxed = await getRunSandboxed();
       const evalResult = await runSandboxed(async ({ evalCode }) => evalCode(wrapped), {
         allowFetch: true,
         fetchAdapter,
+        console: sandboxConsole,
       });
 
       if (evalResult.ok) {
-        return { result: evalResult.data };
+        return { result: evalResult.data, logs };
       }
       return {
         result: undefined,
         error: `${evalResult.error.name}: ${evalResult.error.message}`,
+        logs,
       };
     } catch (err) {
       return {
         result: undefined,
         error: err instanceof Error ? err.message : String(err),
+        logs,
       };
     }
   }

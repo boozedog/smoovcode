@@ -170,6 +170,11 @@ describe("tools.astGrep", () => {
     const { astGrep } = createTools({ cwd: sandbox });
     expect(astGrep.description).toMatch(/ast.?grep|structural/i);
   });
+
+  test("description documents the { matches } return shape", () => {
+    const { astGrep } = createTools({ cwd: sandbox });
+    expect(astGrep.description).toMatch(/\{\s*matches/);
+  });
 });
 
 describe("tools.write", () => {

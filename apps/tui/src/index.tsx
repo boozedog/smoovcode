@@ -29,7 +29,7 @@ function pickExecutor(name: string): Executor {
 
 async function main() {
   const projectRoot = findProjectRoot(process.cwd());
-  const backend = process.env.SMOOV_BACKEND ?? "local";
+  const backend = process.env.SMOOV_BACKEND ?? "quickjs";
   const model = process.env.SMOOV_MODEL;
   const executor = pickExecutor(backend);
 

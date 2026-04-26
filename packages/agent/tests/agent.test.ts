@@ -9,7 +9,8 @@ type StreamPart =
   | { type: "tool-error"; toolName: string; error: unknown }
   | { type: "error"; error: unknown }
   | { type: "start-step" }
-  | { type: "finish-step" };
+  | { type: "finish-step" }
+  | { type: "finish"; finishReason: string };
 
 let lastStreamArgs: Record<string, unknown> | undefined;
 let nextStreamParts: StreamPart[] = [];
@@ -136,6 +137,53 @@ describe("Agent", () => {
     expect(events).toEqual([]);
   });
 
+  test("emits an error when the stream ends with no text and finishReason='tool-calls' (step-limit punt)", async () => {
+    nextStreamParts = [
+      { type: "start-step" },
+      { type: "tool-call", toolName: "codemode", input: { code: "..." } },
+      { type: "tool-result", toolName: "codemode", output: { result: 1 } },
+      { type: "finish-step" },
+      { type: "start-step" },
+      { type: "finish-step" },
+      { type: "finish", finishReason: "tool-calls" },
+    ];
+    const events = await collect(new Agent({ executor: stubExecutor }).run("hi"));
+    const errs = events.filter((e) => e.type === "error") as Array<{
+      type: "error";
+      error: string;
+    }>;
+    expect(errs.length).toBe(1);
+    expect(errs[0].error).toMatch(/no response/i);
+    expect(errs[0].error).toMatch(/tool-calls/);
+    expect(errs[0].error).toMatch(/2 steps?/);
+  });
+
+  test("emits an error when the stream ends with no text and finishReason='length'", async () => {
+    nextStreamParts = [{ type: "finish", finishReason: "length" }];
+    const events = await collect(new Agent({ executor: stubExecutor }).run("hi"));
+    const errs = events.filter((e) => e.type === "error") as Array<{
+      type: "error";
+      error: string;
+    }>;
+    expect(errs.length).toBe(1);
+    expect(errs[0].error).toMatch(/length/);
+  });
+
+  test("does not emit an extra error when the stream produced text", async () => {
+    nextStreamParts = [
+      { type: "text-delta", text: "all done" },
+      { type: "finish", finishReason: "tool-calls" },
+    ];
+    const events = await collect(new Agent({ executor: stubExecutor }).run("hi"));
+    expect(events.some((e) => e.type === "error")).toBe(false);
+  });
+
+  test("does not emit an extra error when finishReason is 'stop' (model chose silence)", async () => {
+    nextStreamParts = [{ type: "finish", finishReason: "stop" }];
+    const events = await collect(new Agent({ executor: stubExecutor }).run("hi"));
+    expect(events.some((e) => e.type === "error")).toBe(false);
+  });
+
   test("appends user and assistant messages to history across turns", async () => {
     const agent = new Agent({ executor: stubExecutor });
 
@@ -225,6 +273,24 @@ describe("Agent", () => {
     nextStreamParts = [];
     await collect(new Agent({ executor: stubExecutor }).run("hi"));
     expect(lastStreamArgs?.system).toMatch(/smoovcode/i);
+  });
+
+  test("default system prompt teaches the model about codemode result shapes and console capture", async () => {
+    nextStreamParts = [];
+    await collect(new Agent({ executor: stubExecutor }).run("hi"));
+    const sys = lastStreamArgs?.system as string;
+    // Must warn against treating tool results as bare arrays (the .matches gotcha).
+    expect(sys).toMatch(/\.length|matches/i);
+    // Must mention that console output is captured (so the model uses console.log to introspect).
+    expect(sys).toMatch(/console/i);
+  });
+
+  test("uses a 30-step budget by default", async () => {
+    nextStreamParts = [];
+    await collect(new Agent({ executor: stubExecutor }).run("hi"));
+    const stop = lastStreamArgs?.stopWhen as { kind: string; n: number };
+    expect(stop.kind).toBe("stepCountIs");
+    expect(stop.n).toBe(30);
   });
 
   test("registers a 'codemode' tool wired to the executor", async () => {
