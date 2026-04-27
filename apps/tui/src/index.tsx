@@ -44,7 +44,12 @@ async function main() {
     run: (msg: string, _signal?: AbortSignal) => agent.run(msg),
   };
 
-  render(React.createElement(App, { agent: agentLike, approvalQueue, banner }));
+  render(React.createElement(App, { agent: agentLike, approvalQueue, banner }), {
+    // Kitty keyboard protocol — required to distinguish Shift+Enter from
+    // plain Enter. Falls back transparently on terminals that don't support
+    // it (Shift+Enter behaves like Enter there).
+    kittyKeyboard: { mode: "auto" },
+  });
 }
 
 main().catch((err) => {

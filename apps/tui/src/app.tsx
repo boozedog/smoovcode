@@ -83,9 +83,9 @@ export function App({ agent, approvalQueue, banner }: AppProps): React.ReactElem
   return React.createElement(
     Box,
     { flexDirection: "column" },
-    React.createElement(Static, {
+    React.createElement(Static<StaticItem>, {
       items: staticItems,
-      children: renderStaticItem as (item: unknown, index: number) => React.ReactNode,
+      children: renderStaticItem,
     }),
     pending
       ? React.createElement(

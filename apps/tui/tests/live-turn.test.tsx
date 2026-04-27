@@ -23,7 +23,10 @@ function scriptedAgent(events: AgentEvent[]): FakeAgent {
 
 async function flush() {
   // Drain microtasks + a setTimeout cycle so the async iterator can yield.
-  await new Promise((r) => setTimeout(r, 20));
+  // React 19 + Ink 7 schedule effects more lazily than 18, so give the
+  // useMountEffect inside useAgentSession a few macrotask ticks to start
+  // the agent stream before we assert.
+  await new Promise((r) => setTimeout(r, 100));
 }
 
 describe("LiveTurn", () => {
