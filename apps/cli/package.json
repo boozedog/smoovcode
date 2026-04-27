@@ -11,7 +11,8 @@
   "type": "module",
   "scripts": {
     "build": "vp pack",
-    "dev": "tsx --env-file-if-exists=../../.env src/index.ts",
+    "dev:raw": "tsx --env-file-if-exists=../../.env src/index.ts",
+    "dev": "vp run -F '@smoovcode/*' build && npm run dev:raw",
     "start": "node --env-file-if-exists=../../.env dist/index.mjs",
     "check": "vp check",
     "test": "vp test"

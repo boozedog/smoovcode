@@ -1,16 +1,33 @@
 import { stdout } from "node:process";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-// readline/promises is mocked to feed scripted user inputs into runLoop's
-// `await rl.question()` calls, then throw ERR_USE_AFTER_CLOSE to exit cleanly
-// (matches the only termination path the loop actually handles).
+// Multi-line input is mocked via a hoisted mock that replaces the readMultiLine
+// function. This feeds scripted user inputs into runLoop's input calls,
+// then throws ERR_USE_AFTER_CLOSE to exit cleanly (matches the termination path).
 let scriptedAnswers: string[] = [];
 const rlClose = vi.fn();
+
+// Hoisted mock for readMultiLine - needs to be defined before imports
+const mockReadMultiLine = vi.hoisted(() =>
+  vi.fn(async () => {
+    if (scriptedAnswers.length === 0) {
+      const err = new Error("rl closed") as NodeJS.ErrnoException;
+      err.code = "ERR_USE_AFTER_CLOSE";
+      throw err;
+    }
+    return scriptedAnswers.shift() as string;
+  }),
+);
+
+vi.mock("../src/readMultiLine.js", () => ({
+  readMultiLine: mockReadMultiLine,
+}));
 
 vi.mock("node:readline/promises", () => ({
   default: {
     createInterface: () => ({
       question: vi.fn(async () => {
+        // This is only used for approval prompts
         if (scriptedAnswers.length === 0) {
           const err = new Error("rl closed") as NodeJS.ErrnoException;
           err.code = "ERR_USE_AFTER_CLOSE";
@@ -79,6 +96,7 @@ describe("runLoop", () => {
     agentRunCalls.length = 0;
     agentConstructorOpts.length = 0;
     rlClose.mockClear();
+    mockReadMultiLine.mockClear();
   });
 
   afterEach(() => {
@@ -209,5 +227,16 @@ describe("runLoop", () => {
     expect(typeof (agentConstructorOpts[0] as { approveHost?: unknown }).approveHost).toBe(
       "function",
     );
+  });
+
+  test("supports multi-line input from readMultiLine", async () => {
+    // Simulate a multi-line input being returned by readMultiLine
+    mockReadMultiLine.mockResolvedValueOnce("line 1\nline 2");
+    mockReadMultiLine.mockRejectedValueOnce(
+      Object.assign(new Error("rl closed"), { code: "ERR_USE_AFTER_CLOSE" }),
+    );
+    scriptedEventsByTurn = [[]];
+    await runLoop(stubExecutor);
+    expect(agentRunCalls).toEqual(["line 1\nline 2"]);
   });
 });
