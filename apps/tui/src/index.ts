@@ -11,9 +11,7 @@ import {
   QuickJSExecutor,
 } from "@smoovcode/agent";
 import { ApprovalQueue } from "@smoovcode/ui-core";
-import { render } from "ink";
-import { createElement } from "react";
-import { App } from "./app.tsx";
+import { TuiApp } from "./app.ts";
 
 function pickExecutor(name: string): Executor {
   switch (name) {
@@ -38,43 +36,24 @@ async function main() {
   const approveHost: HostApprover = (req) => approvalQueue.enqueue(req);
 
   const agent = new Agent({ executor, model, cwd: projectRoot, approveHost });
-
   const banner = `smoovcode (backend: ${executor.name}, root: ${projectRoot}) — ctrl-c to exit`;
-
   const agentLike = {
+    session: agent.session,
     run: (msg: string, opts?: { signal?: AbortSignal } & AgentRunOptions) => agent.run(msg, opts),
   };
 
-  const renderOptions =
-    process.env.SMOOV_KITTY_KEYBOARD === "1"
-      ? {
-          // Opt-in: some terminals echo kitty negotiation/reset sequences like
-          // `^[[?0u` into the scrollback. Shift+Enter may behave like Enter
-          // when this is disabled in common terminals.
-          kittyKeyboard: { mode: "auto" as const },
-        }
-      : {};
+  const app = new TuiApp({
+    agent: agentLike,
+    approvalQueue,
+    banner,
+    stats: { cwd: projectRoot, model: model ?? "gpt-5" },
+  });
 
-  const instance = render(
-    createElement(App, {
-      agent: agentLike,
-      approvalQueue,
-      banner,
-      stats: { cwd: projectRoot, model: model ?? "gpt-5" },
-    }),
-    {
-      exitOnCtrlC: true,
-      alternateScreen: true,
-      ...renderOptions,
-    },
-  );
-
-  const onSigint = () => {
-    instance.unmount();
+  process.once("SIGINT", () => {
+    app.stop();
     process.exit(130);
-  };
-  process.once("SIGINT", onSigint);
-  void instance.waitUntilExit().finally(() => process.off("SIGINT", onSigint));
+  });
+  app.start();
 }
 
 main().catch((err) => {

@@ -1,4 +1,4 @@
-import type { Lang } from "./highlighted-code.tsx";
+import type { Lang } from "./render-block.ts";
 
 /**
  * Module-level cache of highlighted ANSI strings keyed by `${lang}::${code}`.
