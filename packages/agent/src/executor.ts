@@ -14,6 +14,15 @@ export interface ResolvedProvider {
 
 export type Providers = ResolvedProvider[] | ToolFns;
 
+/**
+ * Runs model-authored codemode orchestration code.
+ *
+ * An Executor is not a mutation boundary: any provider function exposed to the
+ * code can perform whatever side effects that host function allows. Keep safety
+ * decisions in the capability/tool layer (what providers are exposed, whether
+ * they are read-only, and whether calls require approval), not in the choice of
+ * executor alone.
+ */
 export interface Executor {
   readonly name: string;
   execute(code: string, providers: Providers): Promise<ExecuteResult>;

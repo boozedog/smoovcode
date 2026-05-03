@@ -23,13 +23,15 @@ smoovcode is a monorepo containing:
 
 ### Sandboxed Execution
 
-Multiple executor backends for running AI-generated code:
+Multiple executor backends for running AI-generated codemode orchestration code:
 
-| Executor     | Description                                           |
-| ------------ | ----------------------------------------------------- |
-| `quickjs`    | **Default** — QuickJS WASM sandbox (isolated, secure) |
-| `local`      | Direct Node.js execution with timeout protection      |
-| `cloudflare` | Cloudflare Workers runtime (planned)                  |
+| Executor     | Description                                      |
+| ------------ | ------------------------------------------------ |
+| `quickjs`    | **Default** — QuickJS WASM sandbox for JS glue   |
+| `local`      | Direct Node.js execution with timeout protection |
+| `cloudflare` | Cloudflare Workers runtime (planned)             |
+
+Executors are not mutation boundaries. They control where the model-authored codemode program runs; side effects come from the tools/capabilities exposed to that program. Today smoovcode exposes only read-style tools inside codemode, while persistent mutations use top-level `write`/`edit` calls for visibility.
 
 ### Agent Tools
 
@@ -166,10 +168,13 @@ The codebase is organized into clear separation of concerns:
 ### Tool Execution Flow
 
 1. AI generates tool calls during streaming response
-2. Tools execute (`bash`, `astGrep`, `write`, `edit`)
-3. Read tools (`bash`, `astGrep`) run inside codemode for orchestration
-4. Write tools (`write`, `edit`) are top-level for visibility and approval
-5. Results streamed back to AI for continuation
+2. Top-level tools execute in the host agent process (`codemode`, `write`, `edit`)
+3. `codemode` runs model-authored TypeScript in the configured executor
+4. The tools exposed to codemode (`bash`, `astGrep`) bridge back to host-side implementations
+5. Persistent write tools (`write`, `edit`) stay top-level for visibility and approval
+6. Results stream back to the AI for continuation
+
+The safety boundary is the capability policy: which tools are exposed where, how they are gated, and how visibly their effects are reported. A mutating capability exposed to codemode could mutate even when the codemode program itself runs in QuickJS.
 
 ## Safety
 

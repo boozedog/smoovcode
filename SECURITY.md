@@ -5,7 +5,26 @@ shell out to real tools — without escaping the project root or leaking
 credentials. This document describes the safety envelope that the `@smoovcode/agent`
 tools enforce.
 
-## Two-axis execution model
+## Capability model, not executor-based immutability
+
+Executors run the model-authored codemode program. They do not, by themselves,
+make an agent read-only or non-mutating. Side effects come from the
+capabilities exposed to that program: a tool that writes files, calls an MCP
+server, runs SQL, or invokes a host process can mutate through its host/tool
+bridge even if the orchestration code runs in QuickJS.
+
+smoovcode's current policy is:
+
+- codemode receives only read-style capabilities (`bash`, `astGrep`),
+- persistent file mutations (`write`, `edit`) are top-level tool calls, so each
+  mutation is visible and independently gateable,
+- plan mode removes known mutating top-level tools and tightens `bash` to a
+  read-only argv allowlist.
+
+When adding new tools, classify and gate them by capability. Do not assume that
+placing a tool behind an executor makes it non-mutating.
+
+## Two-axis bash execution model
 
 The single `bash` tool dispatches argv to one of two backends:
 
@@ -83,8 +102,9 @@ Both tools enforce:
 - **`edit` uniqueness.** `oldString` must occur exactly once unless
   `replaceAll: true` is passed.
 
-The bash sandbox guarantees still hold: no command run via `bash` can
-modify the real filesystem.
+The bash sandbox guarantees still hold: no sandbox-backed command run via
+`bash` can modify the real filesystem. Host-backed `bash` calls are real
+processes and can mutate according to the approved command's behavior.
 
 ## Host execution
 
@@ -141,6 +161,10 @@ loud with a clear error pointing at the offending field.
 
 ## Known limitations
 
+- **Executors are not a side-effect firewall.** QuickJS isolates JavaScript
+  glue, not the host-side behavior of exposed tools. Treat newly added tools
+  (including MCP tools) as capabilities that may need read/write
+  classification, approval, and top-level visibility.
 - **Tracked-but-not-denylisted files remain readable.** The model can
   still echo a non-secret tracked file's contents into its response.
   The sandbox stops writes and escape, not arbitrary read-and-quote.

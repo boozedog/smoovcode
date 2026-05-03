@@ -65,10 +65,12 @@ export class Agent {
       ...(this.opts.cwd !== undefined ? { cwd: this.opts.cwd } : {}),
       ...(this.opts.approveHost ? { approveHost: this.opts.approveHost } : {}),
     });
-    // The split: reads (bash, astGrep) live inside codemode for orchestration
-    // (loops, Promise.all, intermediate values). Writes (write, edit) are
-    // top-level tools so each mutation is a discrete, scrollback-visible
-    // event the harness can render and gate on.
+    // The split: today's read-style capabilities (bash, astGrep) live inside
+    // codemode for orchestration (loops, Promise.all, intermediate values).
+    // Mutating capabilities (write, edit) are top-level tools so each mutation
+    // is a discrete, scrollback-visible event the harness can render and gate
+    // on. This is a capability policy, not an executor guarantee: any
+    // mutating tool exposed to codemode could still mutate via its host bridge.
     const codemode = createCodeTool({
       tools: { bash, astGrep },
       executor: this.opts.executor,

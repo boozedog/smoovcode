@@ -337,5 +337,6 @@ describe("Agent", () => {
     expect(sys).toMatch(/codemode/i);
     expect(sys).toMatch(/\bwrite\b/);
     expect(sys).toMatch(/\bedit\b/);
+    expect(sys).toMatch(/executor is not a mutation boundary/i);
   });
 });
