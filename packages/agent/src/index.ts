@@ -1,5 +1,7 @@
 export { Agent } from "./agent.ts";
-export type { AgentOptions, AgentEvent } from "./agent.ts";
+export type { AgentEvent, AgentOptions, AgentRunOptions } from "./agent.ts";
+export { isReadOnlyArgv, isToolBlockedInMode, MODES, modeSystemPrompt, nextMode } from "./mode.ts";
+export type { Mode } from "./mode.ts";
 export { detectApiMode } from "./api-mode.ts";
 export { findProjectRoot } from "./find-project-root.ts";
 export type { ApiMode } from "./api-mode.ts";

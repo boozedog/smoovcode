@@ -1,5 +1,6 @@
 export {
   type AgentLike,
+  type AgentRunOptions,
   type AgentSessionState,
   useAgentSession,
   type UseAgentSessionOptions,

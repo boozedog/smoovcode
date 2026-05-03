@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {
   Agent,
+  type AgentRunOptions,
   CloudflareExecutor,
   type Executor,
   findProjectRoot,
@@ -41,7 +42,11 @@ async function main() {
   const banner = `smoovcode (backend: ${executor.name}, root: ${projectRoot}) — ctrl-c to exit`;
 
   const agentLike = {
-    run: (msg: string, _signal?: AbortSignal) => agent.run(msg),
+    run: (msg: string, opts?: { signal?: AbortSignal } & AgentRunOptions) => {
+      const runOpts: AgentRunOptions | undefined =
+        opts?.mode !== undefined ? { mode: opts.mode } : undefined;
+      return agent.run(msg, runOpts);
+    },
   };
 
   render(React.createElement(App, { agent: agentLike, approvalQueue, banner }), {

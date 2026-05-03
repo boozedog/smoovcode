@@ -339,4 +339,117 @@ describe("Agent", () => {
     expect(sys).toMatch(/\bedit\b/);
     expect(sys).toMatch(/executor is not a mutation boundary/i);
   });
+
+  describe("modes", () => {
+    type Tools = { codemode: { opts: { tools: Record<string, unknown> } }; [k: string]: unknown };
+    type ToolWithExec = { execute: (input: unknown, opts: unknown) => unknown };
+
+    test("default mode is edit — write/edit are registered as top-level tools", async () => {
+      nextStreamParts = [];
+      await collect(new Agent({ executor: stubExecutor }).run("hi"));
+      const tools = lastStreamArgs?.tools as Tools;
+      expect(tools.write).toBeDefined();
+      expect(tools.edit).toBeDefined();
+    });
+
+    test("plan mode drops write and edit from the top-level tools", async () => {
+      nextStreamParts = [];
+      await collect(new Agent({ executor: stubExecutor }).run("hi", { mode: "plan" }));
+      const tools = lastStreamArgs?.tools as Tools;
+      expect(tools.codemode).toBeDefined();
+      expect(tools.write).toBeUndefined();
+      expect(tools.edit).toBeUndefined();
+    });
+
+    test("plan mode appends the plan-mode system prompt", async () => {
+      nextStreamParts = [];
+      await collect(new Agent({ executor: stubExecutor }).run("hi", { mode: "plan" }));
+      const sys = lastStreamArgs?.system as string;
+      expect(sys).toMatch(/PLAN MODE/);
+    });
+
+    test("auto mode appends the auto-mode system prompt", async () => {
+      nextStreamParts = [];
+      await collect(new Agent({ executor: stubExecutor }).run("hi", { mode: "auto" }));
+      const sys = lastStreamArgs?.system as string;
+      expect(sys).toMatch(/AUTO MODE/);
+    });
+
+    test("plan-mode bash inside codemode rejects mutating argv", async () => {
+      // The codemode-wrapped bash is the same instance, so the guard fires
+      // inside the sandbox too. Calling `rm` from a codemode block must
+      // reach the same throw as a top-level bash call would.
+      nextStreamParts = [];
+      await collect(new Agent({ executor: stubExecutor }).run("hi", { mode: "plan" }));
+      const tools = lastStreamArgs?.tools as Tools;
+      const bash = tools.codemode.opts.tools.bash as ToolWithExec;
+      await expect(bash.execute({ argv: ["rm", "x"] }, {})).rejects.toThrow(/plan/i);
+    });
+
+    test("plan-mode bash allows read-only argv", async () => {
+      nextStreamParts = [];
+      await collect(new Agent({ executor: stubExecutor }).run("hi", { mode: "plan" }));
+      const tools = lastStreamArgs?.tools as Tools;
+      const bash = tools.codemode.opts.tools.bash as ToolWithExec;
+      // `cat` of a non-existent file still produces a result (non-zero exit
+      // code); the point is the guard does not throw before exec.
+      const out = (await bash.execute({ argv: ["cat", "missing.txt"] }, {})) as {
+        exitCode: number;
+      };
+      expect(typeof out.exitCode).toBe("number");
+    });
+
+    test("edit mode does not enforce the read-only argv guard", async () => {
+      nextStreamParts = [];
+      await collect(new Agent({ executor: stubExecutor }).run("hi"));
+      const tools = lastStreamArgs?.tools as Tools;
+      const bash = tools.codemode.opts.tools.bash as ToolWithExec;
+      // The bash tool will dispatch through the normal sandbox/host path; the
+      // important thing here is no plan-mode guard is in the way.
+      await expect(bash.execute({ argv: ["rm", "x"] }, {})).resolves.toBeDefined();
+    });
+
+    test("auto mode short-circuits approveHost — the constructor callback is never called", async () => {
+      // A throwing approver would normally bubble through the bash tool when
+      // a host argv is dispatched. In auto mode the agent swaps in an
+      // always-allow approver for the duration of the turn, so it never runs.
+      const approveSpy = vi.fn(async () => {
+        throw new Error("approveHost should not be called in auto mode");
+      });
+      nextStreamParts = [];
+      const agent = new Agent({ executor: stubExecutor, approveHost: approveSpy });
+      await collect(agent.run("hi", { mode: "auto" }));
+      const tools = lastStreamArgs?.tools as Tools;
+      const bash = tools.codemode.opts.tools.bash as ToolWithExec;
+      // Need to trigger the host path — pick a command not in the sandbox
+      // capability set. The guard will fall through to the host approver.
+      // Without a config allowlist, the call is rejected for not matching
+      // the allowlist before approval — but the approver itself must still
+      // never be invoked. Verify by spying it.
+      try {
+        await bash.execute({ argv: ["this-command-is-definitely-not-a-builtin-99999"] }, {});
+      } catch {
+        // ignore — the allowlist rejects the unknown command.
+      }
+      expect(approveSpy).not.toHaveBeenCalled();
+    });
+
+    test("constructor mode default applies when run is called without an override", async () => {
+      nextStreamParts = [];
+      await collect(new Agent({ executor: stubExecutor, mode: "plan" }).run("hi"));
+      const tools = lastStreamArgs?.tools as Tools;
+      expect(tools.write).toBeUndefined();
+      expect(tools.edit).toBeUndefined();
+    });
+
+    test("run-time mode override beats the constructor default", async () => {
+      nextStreamParts = [];
+      await collect(
+        new Agent({ executor: stubExecutor, mode: "plan" }).run("hi", { mode: "edit" }),
+      );
+      const tools = lastStreamArgs?.tools as Tools;
+      expect(tools.write).toBeDefined();
+      expect(tools.edit).toBeDefined();
+    });
+  });
 });

@@ -67,6 +67,12 @@ export interface CreateToolsOptions {
    * `child_process.spawn`); useful in tests to avoid touching the host.
    */
   hostSpawn?: HostSpawner;
+  /**
+   * Optional predicate run before validateArgvShape on every bash call.
+   * Returning false rejects the call with a descriptive error. Used by
+   * plan mode to enforce a read-only argv allowlist.
+   */
+  bashArgvGuard?: (argv: readonly string[]) => boolean;
 }
 
 /**
@@ -152,6 +158,7 @@ export function createTools(opts: CreateToolsOptions = {}) {
   const execTimeoutMs = opts.execTimeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
   const approveHost: HostApprover = opts.approveHost ?? (async () => false);
   const hostSpawn: HostSpawner = opts.hostSpawn ?? defaultHostSpawn;
+  const bashArgvGuard = opts.bashArgvGuard;
   const allowList = config.host.allow;
   const bashEnv = new Bash({
     fs: filteredOverlay,
@@ -209,6 +216,11 @@ export function createTools(opts: CreateToolsOptions = {}) {
         stdin: z.string().optional().describe("Standard input to pass to the command."),
       }),
       execute: async ({ argv, stdin }) => {
+        if (bashArgvGuard && !bashArgvGuard(argv)) {
+          throw new Error(
+            `bash: command ${JSON.stringify(argv.join(" "))} is blocked by the active mode (plan mode allows read-only commands only: cat, ls, head, tail, grep, rg, fd, git log/diff/status/show, etc.).`,
+          );
+        }
         validateArgvShape(argv);
         const cmd = argv[0];
 

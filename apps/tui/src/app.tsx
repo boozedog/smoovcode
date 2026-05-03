@@ -1,4 +1,4 @@
-import type { HostApprovalRequest } from "@smoovcode/agent";
+import { type HostApprovalRequest, type Mode, nextMode } from "@smoovcode/agent";
 import { type ApprovalQueue, type Block } from "@smoovcode/ui-core";
 import { type AgentLike, useApprovalQueue } from "@smoovcode/ui-react";
 import { Box, Static, Text } from "ink";
@@ -17,6 +17,7 @@ export interface AppProps {
 interface PendingTurn {
   key: number;
   message: string;
+  mode: Mode;
 }
 
 type StaticItem =
@@ -30,6 +31,7 @@ export function App({ agent, approvalQueue, banner }: AppProps): React.ReactElem
   ]);
   const [pending, setPending] = React.useState<PendingTurn | null>(null);
   const [keyCounter, setKeyCounter] = React.useState(0);
+  const [mode, setMode] = React.useState<Mode>("edit");
   const { pending: approval } = useApprovalQueue(approvalQueue);
 
   const submit = (message: string) => {
@@ -37,8 +39,12 @@ export function App({ agent, approvalQueue, banner }: AppProps): React.ReactElem
       ...prev,
       { kind: "user", key: `u-${keyCounter}`, userMessage: message },
     ]);
-    setPending({ key: keyCounter, message });
+    setPending({ key: keyCounter, message, mode });
     setKeyCounter((k) => k + 1);
+  };
+
+  const cycleMode = () => {
+    setMode((m) => nextMode(m));
   };
 
   const handleBlockFinalize = (block: Block, turnId: number) => {
@@ -95,6 +101,7 @@ export function App({ agent, approvalQueue, banner }: AppProps): React.ReactElem
             key: pending.key,
             agent,
             message: pending.message,
+            mode: pending.mode,
             onBlockFinalize: handleBlockFinalize,
             onTurnDone: handleTurnDone,
             onError: handleError,
@@ -105,7 +112,7 @@ export function App({ agent, approvalQueue, banner }: AppProps): React.ReactElem
       ? React.createElement(
           Box,
           { key: "prompt", marginTop: 1 },
-          React.createElement(Prompt, { onSubmit: submit }),
+          React.createElement(Prompt, { onSubmit: submit, mode, onCycleMode: cycleMode }),
         )
       : null,
     approval !== null

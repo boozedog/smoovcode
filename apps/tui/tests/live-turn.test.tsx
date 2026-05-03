@@ -7,7 +7,7 @@ import { BlockView } from "../src/block-view.tsx";
 import { LiveTurn } from "../src/live-turn.tsx";
 
 interface FakeAgent {
-  run: (msg: string, signal?: AbortSignal) => AsyncIterable<AgentEvent>;
+  run: (msg: string, opts?: { signal?: AbortSignal }) => AsyncIterable<AgentEvent>;
 }
 
 function scriptedAgent(events: AgentEvent[]): FakeAgent {

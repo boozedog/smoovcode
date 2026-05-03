@@ -1,3 +1,4 @@
+import type { Mode } from "@smoovcode/agent";
 import { type Block, type ToolCallBlock } from "@smoovcode/ui-core";
 import { type AgentLike, useAgentSession } from "@smoovcode/ui-react";
 import { Box, Text } from "ink";
@@ -14,6 +15,8 @@ import { Spinner } from "./spinner.tsx";
 interface LiveTurnProps {
   agent: AgentLike;
   message: string;
+  /** Operating mode for this turn — `edit` (default), `plan`, or `auto`. */
+  mode?: Mode;
   /**
    * Called once per block as it transitions out of streaming/running into a
    * terminal state. App promotes the block into `<Static>` scrollback.
@@ -69,11 +72,16 @@ async function ensureBlockHighlighted(b: Block): Promise<void> {
 export function LiveTurn({
   agent,
   message,
+  mode,
   onBlockFinalize,
   onTurnDone,
   onError,
 }: LiveTurnProps): React.ReactElement | null {
-  const session = useAgentSession({ agent, message });
+  const session = useAgentSession({
+    agent,
+    message,
+    ...(mode !== undefined ? { mode } : {}),
+  });
   const live = session.conversation.live;
   const finalized = session.conversation.finalized.at(-1);
   const turn = live ?? finalized;

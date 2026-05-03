@@ -5,14 +5,14 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { useAgentSession } from "../src/use-agent-session.ts";
 
 interface FakeAgent {
-  run: (msg: string, signal?: AbortSignal) => AsyncIterable<AgentEvent>;
+  run: (msg: string, opts?: { signal?: AbortSignal }) => AsyncIterable<AgentEvent>;
 }
 
 function makeAgent(events: AgentEvent[], onAbort?: () => void): FakeAgent {
   return {
-    async *run(_msg: string, signal?: AbortSignal) {
+    async *run(_msg: string, opts?: { signal?: AbortSignal }) {
       for (const e of events) {
-        if (signal?.aborted) {
+        if (opts?.signal?.aborted) {
           onAbort?.();
           return;
         }
@@ -74,11 +74,11 @@ describe("useAgentSession", () => {
   test("aborts the agent on unmount via the AbortSignal", async () => {
     const onAbort = vi.fn();
     const agent: FakeAgent = {
-      async *run(_msg, signal) {
+      async *run(_msg, opts) {
         // Long-running stream that yields and waits forever.
         yield { type: "text", delta: "first" };
         await new Promise<void>((resolve) => {
-          signal?.addEventListener("abort", () => {
+          opts?.signal?.addEventListener("abort", () => {
             onAbort();
             resolve();
           });
