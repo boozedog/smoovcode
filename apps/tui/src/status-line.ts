@@ -1,8 +1,6 @@
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import { Box, Text } from "ink";
-import { createElement, type ReactElement } from "react";
 
 export interface SessionStats {
   cwd?: string;
@@ -83,32 +81,4 @@ export function formatStatusLine(stats: SessionStats = {}): string {
   if (revision) detailParts.push(revision);
   if (stats.contextPercent !== undefined) detailParts.push(`${Math.round(stats.contextPercent)}%`);
   return [`${project}${branch ? ` on ${branch}` : ""}`, detailParts.join(" ")].join("\n");
-}
-
-export function StatusLine({ stats = {} }: { stats?: SessionStats }): ReactElement {
-  const project = formatProject(stats.cwd ?? process.cwd());
-  const branch = stats.branch ?? readGitBranch(stats.cwd ?? process.cwd());
-  const modelLabel = formatModelLabel(stats);
-  const revision = stats.revision ?? readGitRevision(stats.cwd ?? process.cwd());
-
-  return createElement(
-    Box,
-    { flexDirection: "column", paddingX: 1 },
-    createElement(
-      Box,
-      null,
-      createElement(Text, { color: "blue" }, project),
-      branch ? createElement(Text, { color: "magenta" }, ` on `) : null,
-      branch ? createElement(Text, { color: "magenta", bold: true }, branch) : null,
-    ),
-    createElement(
-      Box,
-      null,
-      createElement(Text, { color: "cyan" }, `[${modelLabel}]`),
-      revision ? createElement(Text, { dimColor: true }, ` ${revision}`) : null,
-      stats.contextPercent !== undefined
-        ? createElement(Text, { color: "green" }, ` ${Math.round(stats.contextPercent)}%`)
-        : null,
-    ),
-  );
 }

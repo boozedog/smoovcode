@@ -1,0 +1,142 @@
+import type { HostApprovalRequest } from "@smoovcode/agent";
+import { ApprovalQueue, type Block } from "@smoovcode/ui-core";
+import { PromptModel } from "./prompt-model.ts";
+import { renderBlock } from "./render-block.ts";
+import { formatStatusLine, type SessionStats } from "./status-line.ts";
+
+export type StaticItem =
+  | { kind: "banner"; key: string; text: string }
+  | { kind: "user"; key: string; userMessage: string }
+  | { kind: "block"; key: string; block: Block };
+
+export class TuiAppModel {
+  readonly prompt = new PromptModel();
+  readonly staticItems: StaticItem[];
+  liveItems: StaticItem[] = [];
+  pendingMessage: string | null = null;
+  discardPrompt = false;
+  keyCounter = 0;
+  expandedCodemodeIds = new Set<string>();
+
+  constructor(
+    private readonly opts: {
+      banner: string;
+      stats?: SessionStats;
+      approvalQueue?: ApprovalQueue<HostApprovalRequest>;
+    },
+  ) {
+    this.staticItems = [{ kind: "banner", key: "banner", text: opts.banner }];
+  }
+
+  submit(message: string): void {
+    this.liveItems = [];
+    this.staticItems.push({ kind: "user", key: `u-${this.keyCounter}`, userMessage: message });
+    this.pendingMessage = message;
+    this.keyCounter += 1;
+  }
+
+  addBlock(block: Block, key = `b-${this.keyCounter}-${block.id}`): void {
+    this.staticItems.push({ kind: "block", key, block });
+  }
+
+  setLiveBlocks(blocks: Block[], turnId: number): void {
+    this.liveItems = blocks.map((block) => ({
+      kind: "block",
+      key: `live-${turnId}-${block.id}`,
+      block,
+    }));
+  }
+
+  finishTurn(): void {
+    this.liveItems = [];
+    this.pendingMessage = null;
+  }
+
+  addError(err: unknown): void {
+    const message = err instanceof Error ? err.message : String(err);
+    this.liveItems = [];
+    this.addBlock(
+      { kind: "error", id: `err-${this.keyCounter}`, error: message, status: "done" },
+      `err-${this.keyCounter}`,
+    );
+    this.pendingMessage = null;
+  }
+
+  toggleCodemodeExpansion(): void {
+    const codemodeIds = this.staticItems.flatMap((item) =>
+      item.kind === "block" && item.block.kind === "tool-call" && item.block.name === "codemode"
+        ? [item.key]
+        : [],
+    );
+    this.expandedCodemodeIds =
+      this.expandedCodemodeIds.size === codemodeIds.length ? new Set() : new Set(codemodeIds);
+  }
+
+  approvePending(approved: boolean): void {
+    this.opts.approvalQueue?.resolve(approved);
+  }
+
+  renderFrame(
+    now = Date.now(),
+    startedAt?: number,
+  ): { lines: string[]; cursor?: { line: number; column: number } } {
+    const lines: string[] = [];
+    let cursor: { line: number; column: number } | undefined;
+    for (const item of [...this.staticItems, ...this.liveItems]) {
+      if (item.kind === "banner") lines.push(item.text);
+      else if (item.kind === "user") lines.push("", `> ${item.userMessage}`);
+      else
+        lines.push(
+          "",
+          ...renderBlock(item.block, { expandedCodemode: this.expandedCodemodeIds.has(item.key) }),
+        );
+    }
+
+    if (this.pendingMessage !== null)
+      lines.push("", `working ${formatElapsed(now - (startedAt ?? now))}`);
+
+    const approval = this.opts.approvalQueue?.peek() ?? null;
+    if (this.discardPrompt) {
+      lines.push(
+        "",
+        "There are staged sandbox filesystem changes that have not been applied to disk. Exit and discard them? [y/N]",
+      );
+    } else if (approval !== null) {
+      lines.push("", ...renderApproval(approval));
+    } else if (this.pendingMessage === null) {
+      const promptStart = lines.length + 1;
+      lines.push("", ...this.prompt.renderLines());
+      const promptLine = promptStart + this.prompt.lines.length - 1;
+      const promptPrefix = this.prompt.lines.length === 1 ? "> " : "... ";
+      cursor = {
+        line: promptLine,
+        column: promptPrefix.length + this.prompt.lines[this.prompt.lines.length - 1].length,
+      };
+    }
+
+    const status = renderStatus(this.opts.stats);
+    if (status) lines.push(...status.split("\n"));
+
+    return { lines, ...(cursor ? { cursor } : {}) };
+  }
+
+  renderLines(now = Date.now(), startedAt?: number): string[] {
+    return this.renderFrame(now, startedAt).lines;
+  }
+}
+
+function renderApproval(req: HostApprovalRequest): string[] {
+  const argv = "argv" in req && Array.isArray(req.argv) ? req.argv.join(" ") : JSON.stringify(req);
+  return ["Approve host command?", argv, "Press y to approve, n to deny."];
+}
+
+function renderStatus(stats?: SessionStats): string {
+  return stats ? formatStatusLine(stats) : "";
+}
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes === 0 ? `${seconds}s` : `${minutes}m ${seconds}s`;
+}
