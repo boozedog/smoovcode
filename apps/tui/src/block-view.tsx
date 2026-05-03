@@ -123,7 +123,14 @@ function CodemodeView({
   const lineLabel = `${lineCount} line${lineCount === 1 ? "" : "s"}`;
   const glyph = expanded || block.status === "running" ? "▼" : "▶";
   const result = extractResult(block.output);
-  const resultSummary = block.status === "done" ? formatCollapsedResult(result) : "";
+  const metrics = extractMetrics(block.output);
+  const metadata = [lineLabel];
+  if (metrics) {
+    metadata.push(`${metrics.toolCalls} call${metrics.toolCalls === 1 ? "" : "s"}`);
+  }
+  metadata.push(`${formatBytes(byteLength(input.code))} in`);
+  if (block.status === "done") metadata.push(`${formatBytes(byteLength(block.output))} out`);
+  const resultSummary = block.status === "done" && result === undefined ? " ✓ done" : "";
   const statusSummary = block.status === "error" ? ` ✗ ${block.error}` : resultSummary;
 
   if (!expanded && block.status !== "running") {
@@ -131,7 +138,7 @@ function CodemodeView({
       Text,
       null,
       React.createElement(Text, { color: "magenta" }, `${glyph} [${block.name}]`),
-      React.createElement(Text, { dimColor: true }, ` ${lineLabel} · Ctrl+O to expand`),
+      React.createElement(Text, { dimColor: true }, ` ${metadata.join(" · ")}`),
       statusSummary,
     );
   }
@@ -146,7 +153,7 @@ function CodemodeView({
       React.createElement(
         Box,
         { marginLeft: 1 },
-        React.createElement(Text, { dimColor: true }, `${lineLabel} · Ctrl+O to collapse`),
+        React.createElement(Text, { dimColor: true }, metadata.join(" · ")),
       ),
       block.status === "running"
         ? React.createElement(
@@ -261,19 +268,30 @@ function EditView({
   );
 }
 
-function formatCollapsedResult(result: unknown): string {
-  if (result === undefined) return " ✓ done";
-  if (typeof result === "string") return ` → string (${result.length} chars)`;
-  if (Array.isArray(result)) return ` → array (${result.length} items)`;
-  if (result && typeof result === "object") {
-    const keys = Object.keys(result);
-    return ` → object (${keys.length} key${keys.length === 1 ? "" : "s"})`;
-  }
-  return ` → ${JSON.stringify(result)}`;
+function byteLength(value: unknown): number {
+  const serialized = typeof value === "string" ? value : JSON.stringify(value);
+  return Buffer.byteLength(serialized ?? "", "utf8");
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1_000) return `${bytes} B`;
+  if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(1).replace(/\.0$/, "")} kB`;
+  return `${(bytes / 1_000_000).toFixed(1).replace(/\.0$/, "")} MB`;
 }
 
 function extractResult(o: unknown): unknown {
   return o && typeof o === "object" && "result" in o ? (o as { result: unknown }).result : o;
+}
+
+function extractMetrics(o: unknown): { toolCalls: number } | null {
+  if (o && typeof o === "object" && "metrics" in o) {
+    const metrics = (o as { metrics: unknown }).metrics;
+    if (metrics && typeof metrics === "object" && "toolCalls" in metrics) {
+      const toolCalls = (metrics as { toolCalls: unknown }).toolCalls;
+      if (typeof toolCalls === "number") return { toolCalls };
+    }
+  }
+  return null;
 }
 
 function extractBytes(o: unknown): number | null {

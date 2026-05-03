@@ -79,6 +79,30 @@ describe("LocalExecutor", () => {
     expect(r.result).toBe("flat");
   });
 
+  test("reports tool-call metrics for calls made inside codemode", async () => {
+    const providers: ResolvedProvider[] = [
+      {
+        name: "codemode",
+        fns: {
+          echo: async (a: unknown) => ({ echoed: a }),
+          ping: async () => "pong",
+        },
+      },
+    ];
+    const r = await new LocalExecutor().execute(
+      `async () => {
+        await codemode.echo({ text: "hello" });
+        await codemode.ping();
+        return "done";
+      }`,
+      providers,
+    );
+    expect(r.result).toBe("done");
+    expect(r.metrics?.toolCalls).toBe(2);
+    expect(r.metrics?.toolInputBytes).toBeGreaterThan(0);
+    expect(r.metrics?.toolOutputBytes).toBeGreaterThan(0);
+  });
+
   describe("timeout", () => {
     const ORIGINAL = process.env.SMOOV_EXEC_TIMEOUT_MS;
 

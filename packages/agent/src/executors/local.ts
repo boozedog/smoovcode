@@ -1,8 +1,10 @@
 import {
+  createEmptyMetrics,
   type ExecuteResult,
   type Executor,
   normalizeProviders,
   type Providers,
+  wrapProvidersWithMetrics,
 } from "../executor.ts";
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -17,7 +19,8 @@ export class LocalExecutor implements Executor {
       error: (...args: unknown[]) => logs.push(args.map(String).join(" ")),
     };
 
-    const resolved = normalizeProviders(providers);
+    const metrics = createEmptyMetrics();
+    const resolved = wrapProvidersWithMetrics(normalizeProviders(providers), metrics);
     const namespaceNames = resolved.map((p) => p.name);
     const namespaceObjs = resolved.map((p) => p.fns);
 
@@ -30,12 +33,13 @@ export class LocalExecutor implements Executor {
           setTimeout(() => reject(new Error(`executor timeout after ${timeoutMs}ms`)), timeoutMs),
         ),
       ]);
-      return { result, logs };
+      return { result, logs, metrics };
     } catch (err) {
       return {
         result: undefined,
         error: err instanceof Error ? err.message : String(err),
         logs,
+        metrics,
       };
     }
   }

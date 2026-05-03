@@ -1,7 +1,14 @@
+export interface ExecuteMetrics {
+  toolCalls: number;
+  toolInputBytes: number;
+  toolOutputBytes: number;
+}
+
 export interface ExecuteResult {
   result: unknown;
   error?: string;
   logs?: string[];
+  metrics?: ExecuteMetrics;
 }
 
 export type ToolFns = Record<string, (...args: unknown[]) => Promise<unknown>>;
@@ -33,4 +40,34 @@ export interface Executor {
 export function normalizeProviders(providers: Providers): ResolvedProvider[] {
   if (Array.isArray(providers)) return providers;
   return [{ name: "codemode", fns: providers }];
+}
+
+export function serializedByteLength(value: unknown): number {
+  const serialized = JSON.stringify(value);
+  return Buffer.byteLength(serialized ?? "", "utf8");
+}
+
+export function createEmptyMetrics(): ExecuteMetrics {
+  return { toolCalls: 0, toolInputBytes: 0, toolOutputBytes: 0 };
+}
+
+export function wrapProvidersWithMetrics(
+  providers: ResolvedProvider[],
+  metrics: ExecuteMetrics,
+): ResolvedProvider[] {
+  return providers.map((provider) => ({
+    ...provider,
+    fns: Object.fromEntries(
+      Object.entries(provider.fns).map(([name, fn]) => [
+        name,
+        async (...args: unknown[]) => {
+          metrics.toolCalls += 1;
+          metrics.toolInputBytes += serializedByteLength(args.length === 1 ? args[0] : args);
+          const result = await fn(...args);
+          metrics.toolOutputBytes += serializedByteLength(result);
+          return result;
+        },
+      ]),
+    ),
+  }));
 }

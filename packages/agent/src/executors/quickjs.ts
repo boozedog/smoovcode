@@ -6,10 +6,12 @@ import { HEADERS_MARKER, loadAsyncQuickJs } from "@sebastianwessel/quickjs";
 // as a namespace rather than a default export. Cast to the real shape.
 const variant = variantModule as unknown as QuickJSAsyncVariant;
 import {
+  createEmptyMetrics,
   type ExecuteResult,
   type Executor,
   normalizeProviders,
   type Providers,
+  wrapProvidersWithMetrics,
 } from "../executor.ts";
 
 const HOST_PREFIX = "host://tool/";
@@ -49,7 +51,8 @@ export class QuickJSExecutor implements Executor {
   readonly name = "quickjs";
 
   async execute(code: string, providers: Providers): Promise<ExecuteResult> {
-    const resolved = normalizeProviders(providers);
+    const metrics = createEmptyMetrics();
+    const resolved = wrapProvidersWithMetrics(normalizeProviders(providers), metrics);
     // Flatten to "ns/toolName" -> fn for the bridge URL lookup.
     const flat: Record<string, (args: unknown) => Promise<unknown>> = {};
     for (const p of resolved) {
@@ -116,18 +119,20 @@ export class QuickJSExecutor implements Executor {
       });
 
       if (evalResult.ok) {
-        return { result: evalResult.data, logs };
+        return { result: evalResult.data, logs, metrics };
       }
       return {
         result: undefined,
         error: `${evalResult.error.name}: ${evalResult.error.message}`,
         logs,
+        metrics,
       };
     } catch (err) {
       return {
         result: undefined,
         error: err instanceof Error ? err.message : String(err),
         logs,
+        metrics,
       };
     }
   }

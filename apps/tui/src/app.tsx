@@ -70,7 +70,7 @@ function TranscriptItem({
   }
   return React.createElement(
     Box,
-    { key: item.key, ref },
+    { key: item.key, ref, marginTop: 1 },
     React.createElement(BlockView, { block: item.block, expandedCodemode }),
   );
 }

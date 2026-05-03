@@ -49,6 +49,32 @@ describe("App", () => {
     expect(frame).toContain("[gpt-x]");
   });
 
+  test("renders a blank line between finalized output blocks", async () => {
+    const agent = {
+      async *run() {
+        yield { type: "tool-call" as const, name: "codemode", input: { code: "1" } };
+        yield { type: "tool-result" as const, name: "codemode", output: { result: 1 } };
+        yield { type: "tool-call" as const, name: "codemode", input: { code: "2" } };
+        yield { type: "tool-result" as const, name: "codemode", output: { result: 2 } };
+      },
+    };
+    const { lastFrame, stdin } = render(
+      React.createElement(App, {
+        agent,
+        approvalQueue: new ApprovalQueue<HostApprovalRequest>(),
+        banner: "banner",
+      }),
+    );
+
+    stdin.write("go");
+    await flush();
+    stdin.write("\r");
+    await flush();
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toMatch(/\[codemode\][\s\S]*\n\s*\n[\s\S]*\[codemode\]/);
+  });
+
   test("streams assistant chat text into the transcript without streaming tool-call blocks", async () => {
     const never = new Promise<void>(() => {});
     const agent = {

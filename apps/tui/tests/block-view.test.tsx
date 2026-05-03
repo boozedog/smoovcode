@@ -80,13 +80,16 @@ describe("BlockView", () => {
       name: "codemode",
       input: { code: 'const x = "hello";' },
       status: "done",
-      output: { result: { ok: true } },
+      output: { result: { ok: true }, metrics: { toolCalls: 3 } },
     };
     const { lastFrame } = render(React.createElement(BlockView, { block }));
     const frame = lastFrame() ?? "";
     expect(frame).toContain("▶ [codemode]");
     expect(frame).toContain("1 line");
-    expect(frame).toContain("→ object (1 key)");
+    expect(frame).toContain("3 calls");
+    expect(frame).toMatch(/\d+ B in/);
+    expect(frame).toMatch(/\d+ B out/);
+    expect(frame).not.toContain("object (1 key)");
     expect(frame).not.toContain('{"ok":true}');
     expect(frame).not.toContain('const x = "hello";');
   });
@@ -134,7 +137,7 @@ describe("BlockView", () => {
     };
     const { lastFrame } = render(React.createElement(BlockView, { block }));
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("→ object (1 key)");
+    expect(frame).toMatch(/\d+ B out/);
     expect(frame).not.toContain("README.md");
     expect(frame).not.toContain("package.json");
   });

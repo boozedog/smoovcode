@@ -30,6 +30,30 @@ describe("QuickJSExecutor", () => {
     expect(r.result).toBe("hi world");
   });
 
+  test("reports tool-call metrics for calls made inside codemode", async () => {
+    const providers: ResolvedProvider[] = [
+      {
+        name: "codemode",
+        fns: {
+          echo: async (a: unknown) => ({ echoed: a }),
+          ping: async () => "pong",
+        },
+      },
+    ];
+    const r = await new QuickJSExecutor().execute(
+      `async () => {
+        await codemode.echo({ text: "hello" });
+        await codemode.ping();
+        return "done";
+      }`,
+      providers,
+    );
+    expect(r.result).toBe("done");
+    expect(r.metrics?.toolCalls).toBe(2);
+    expect(r.metrics?.toolInputBytes).toBeGreaterThan(0);
+    expect(r.metrics?.toolOutputBytes).toBeGreaterThan(0);
+  });
+
   test("supports multiple namespaces", async () => {
     const providers: ResolvedProvider[] = [
       { name: "alpha", fns: { x: async () => "A" } },
