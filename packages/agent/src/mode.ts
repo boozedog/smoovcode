@@ -5,12 +5,10 @@
  * - `edit` (default): mutating tools prompt the user for approval per call.
  * - `plan`: read-only research. `write` and `edit` are blocked outright;
  *   `bash` is restricted to a conservative read-only argv allowlist.
- * - `auto`: every tool call is auto-approved. The system prompt warns the
- *   model to pause before irreversible actions.
  */
-export type Mode = "edit" | "plan" | "auto";
+export type Mode = "edit" | "plan";
 
-export const MODES: readonly Mode[] = ["edit", "plan", "auto"] as const;
+export const MODES: readonly Mode[] = ["edit", "plan"] as const;
 
 export function nextMode(m: Mode): Mode {
   const i = MODES.indexOf(m);
@@ -22,13 +20,8 @@ Do not call write or edit. Bash is restricted to read-only commands (ls, cat, gr
 rg, git log/diff/status/show, etc.). At the end, present a concise plan: bullets,
 files to change, approach. The user will review and exit plan mode to execute.`;
 
-const AUTO_PROMPT = `You are in AUTO MODE. Every tool call is auto-approved. Work efficiently, but pause
-in chat to describe any irreversible action (rm -rf, force push, dropping tables)
-before performing it. Prefer smaller reversible steps.`;
-
 export function modeSystemPrompt(m: Mode): string {
   if (m === "plan") return PLAN_PROMPT;
-  if (m === "auto") return AUTO_PROMPT;
   return "";
 }
 

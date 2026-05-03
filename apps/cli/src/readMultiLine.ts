@@ -2,6 +2,8 @@ import { stdin, stdout } from "node:process";
 
 const CYAN = "\x1b[36m";
 const RESET = "\x1b[0m";
+const CSI_U_RE = new RegExp(String.raw`^\u001B\[(\d+);(\d+);(\d+)~`);
+const SIMPLE_CSI_RE = new RegExp(String.raw`^\u001B\[[A-Za-z~]`);
 
 /**
  * Read multi-line input from stdin using raw mode.
@@ -40,7 +42,7 @@ export async function readMultiLine(): Promise<string> {
         if (char === "\x1b") {
           // Look ahead for CSI-u sequence like [27;2;13~ (Shift+Enter) or [27;3;13~ (Alt+Enter)
           const remaining = str.slice(i);
-          const match = remaining.match(/^\x1b\[(\d+);(\d+);(\d+)~/);
+          const match = remaining.match(CSI_U_RE);
           if (match) {
             const [, , mod, key] = match;
             // mod=2 is Shift, mod=3 is Alt; key=13 is Enter
@@ -65,7 +67,7 @@ export async function readMultiLine(): Promise<string> {
           // Check for common sequences like \x1b[A (up), \x1b[B (down), etc.
           if (remaining.startsWith("\x1b[")) {
             // Skip the whole sequence (up to next letter usually)
-            const seqMatch = remaining.match(/^\x1b\[[A-Za-z~]/);
+            const seqMatch = remaining.match(SIMPLE_CSI_RE);
             if (seqMatch) {
               i += seqMatch[0].length - 1;
             } else {

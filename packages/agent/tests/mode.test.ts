@@ -9,16 +9,15 @@ import {
 } from "../src/mode.ts";
 
 describe("MODES", () => {
-  test("has the canonical edit/plan/auto ordering", () => {
-    expect(MODES).toEqual(["edit", "plan", "auto"]);
+  test("has the canonical edit/plan ordering", () => {
+    expect(MODES).toEqual(["edit", "plan"]);
   });
 });
 
 describe("nextMode", () => {
-  test("cycles edit -> plan -> auto -> edit", () => {
+  test("cycles edit -> plan -> edit", () => {
     expect(nextMode("edit")).toBe("plan");
-    expect(nextMode("plan")).toBe("auto");
-    expect(nextMode("auto")).toBe("edit");
+    expect(nextMode("plan")).toBe("edit");
   });
 });
 
@@ -33,12 +32,6 @@ describe("modeSystemPrompt", () => {
     expect(sys).toMatch(/write|edit/i);
     expect(sys).toMatch(/read-only/i);
   });
-
-  test("auto-mode prompt warns about irreversible actions", () => {
-    const sys = modeSystemPrompt("auto");
-    expect(sys).toMatch(/AUTO MODE/);
-    expect(sys).toMatch(/irreversible/i);
-  });
 });
 
 describe("isToolBlockedInMode", () => {
@@ -46,10 +39,6 @@ describe("isToolBlockedInMode", () => {
 
   test("never blocks anything in edit mode", () => {
     for (const t of tools) expect(isToolBlockedInMode(t, "edit")).toBe(false);
-  });
-
-  test("never blocks anything in auto mode", () => {
-    for (const t of tools) expect(isToolBlockedInMode(t, "auto")).toBe(false);
   });
 
   test("blocks only `write` and `edit` in plan mode", () => {
@@ -172,8 +161,8 @@ describe("isReadOnlyArgv", () => {
     }
   });
 
-  test("type Mode covers exactly the three values", () => {
-    const all: readonly Mode[] = ["edit", "plan", "auto"];
+  test("type Mode covers exactly the two values", () => {
+    const all: readonly Mode[] = ["edit", "plan"];
     expect(all).toEqual(MODES);
   });
 });

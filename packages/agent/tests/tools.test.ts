@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
@@ -149,6 +149,19 @@ describe("tools.astGrep", () => {
     expect(files[1]).toMatch(/b\.ts$/);
   });
 
+  test("skips files hidden by gitignore and secret deny filters", async () => {
+    writeFileSync(join(sandbox, ".gitignore"), "ignored.ts\n");
+    writeFileSync(join(sandbox, "ignored.ts"), "function hidden() { return 1 }\n");
+    writeFileSync(join(sandbox, "visible.ts"), "function shown() { return 2 }\n");
+    const { astGrep } = createTools({ cwd: sandbox });
+    const out = (await invoke(astGrep, {
+      pattern: "function $NAME() { return $X }",
+      language: "TypeScript",
+      paths: ["."],
+    })) as { matches: Array<{ file: string; text: string }> };
+    expect(out.matches.map((m) => m.text)).toEqual(["function shown() { return 2 }"]);
+  });
+
   test("rejects when both source and paths are provided", async () => {
     const { astGrep } = createTools({ cwd: sandbox });
     await expect(
@@ -222,6 +235,21 @@ describe("tools.write", () => {
   test("rejects an empty path", async () => {
     const { write } = createTools({ cwd: sandbox });
     await expect(invoke(write, { path: "", content: "x" })).rejects.toThrow();
+  });
+
+  test("rejects writes through symlinks", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "smoov-write-outside-"));
+    try {
+      writeFileSync(join(outside, "target.txt"), "secret");
+      symlinkSync(join(outside, "target.txt"), join(sandbox, "link.txt"));
+      const { write } = createTools({ cwd: sandbox });
+      await expect(invoke(write, { path: "link.txt", content: "nope" })).rejects.toThrow(
+        /symlink|outside|root|escape|not allowed/i,
+      );
+      expect(readFileSync(join(outside, "target.txt"), "utf8")).toBe("secret");
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 });
 
@@ -305,6 +333,21 @@ describe("tools.edit", () => {
     await invoke(edit, { path: "f.txt", oldString: "before", newString: "after" });
     const out = (await invoke(bash, { argv: ["cat", "f.txt"] })) as { stdout: string };
     expect(out.stdout).toBe("after\n");
+  });
+
+  test("rejects edits through symlinks", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "smoov-edit-outside-"));
+    try {
+      writeFileSync(join(outside, "target.txt"), "old");
+      symlinkSync(join(outside, "target.txt"), join(sandbox, "link.txt"));
+      const { edit } = createTools({ cwd: sandbox });
+      await expect(
+        invoke(edit, { path: "link.txt", oldString: "old", newString: "new" }),
+      ).rejects.toThrow(/symlink|outside|root|escape|not allowed|regular file/i);
+      expect(readFileSync(join(outside, "target.txt"), "utf8")).toBe("old");
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 });
 

@@ -137,6 +137,15 @@ describe("loadIgnorePatterns", () => {
     expect(patterns).toContain("node_modules");
   });
 
+  test("merges nested .gitignore patterns relative to their directory", () => {
+    mkdirSync(join(sandbox, "src", "generated"), { recursive: true });
+    writeFileSync(join(sandbox, "src", ".gitignore"), "generated\n*.local\n!important.local\n");
+    const patterns = loadIgnorePatterns({ root: sandbox });
+    expect(patterns).toContain("src/generated");
+    expect(patterns).toContain("src/*.local");
+    expect(patterns).toContain("!src/important.local");
+  });
+
   test("merges patterns from .git/info/exclude", () => {
     mkdirSync(join(sandbox, ".git", "info"), { recursive: true });
     writeFileSync(join(sandbox, ".git", "info", "exclude"), "scratch.txt\n");

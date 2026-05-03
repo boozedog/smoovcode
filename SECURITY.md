@@ -17,10 +17,18 @@ smoovcode's current policy is:
 
 - codemode receives only read-style capabilities (`bash`, `astGrep`),
 - persistent file mutations (`write`, `edit`) are top-level tool calls, so each
-  mutation is visible and independently gateable,
-- plan mode removes known mutating top-level tools and tightens `bash` to a
-  read-only argv allowlist.
+  mutation is visible in the event stream and scrollback,
+- there are exactly two operating modes:
+  - **edit mode** — `write` and `edit` are exposed and execute directly after
+    passing path/ignore/symlink validation,
+  - **plan mode** — `write` and `edit` are not exposed at all, and `bash` is
+    tightened to a conservative read-only argv allowlist,
+- host-backed `bash` execution is always separately gated by the project
+  allowlist and per-call user approval, regardless of mode.
 
+`write` and `edit` are deliberately **mode-gated, not per-call approval-gated**.
+Use plan mode when you want investigation and a proposed plan without persistent
+file changes; switch to edit mode when direct file mutations are acceptable.
 When adding new tools, classify and gate them by capability. Do not assume that
 placing a tool behind an executor makes it non-mutating.
 
@@ -68,7 +76,9 @@ model a clearer error before it hits them.
   `edit` and `write` tools, see below.)
 - **Gitignore + secret deny filtered reads.** A `GitignoreFs` adapter
   consults patterns from:
-  - the project's `.gitignore`,
+  - the project's top-level `.gitignore`,
+  - nested `.gitignore` files, with patterns interpreted relative to the
+    directory containing that `.gitignore`,
   - `.git/info/exclude`,
   - a built-in default secret deny list (`.env*`, `*.pem`, `id_rsa*`,
     `id_ed25519*`, `*.key`),
@@ -82,22 +92,41 @@ model a clearer error before it hits them.
   to the just-bash interpreter, which stops at the next statement boundary.
 - **Network, Python, JavaScript exec** all disabled (just-bash defaults).
 
+## Operating modes
+
+smoovcode has two modes:
+
+| Mode   | Persistent file mutation                                         | `bash` inside codemode                            | Host-backed `bash`                                                                  |
+| ------ | ---------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `edit` | `write` / `edit` exposed; validation-gated, no per-call approval | sandbox commands plus allowlisted host dispatch   | allowlist + per-call user approval                                                  |
+| `plan` | `write` / `edit` not exposed                                     | read-only argv guard before sandbox/host dispatch | allowlist + per-call user approval, and only if the argv passes the read-only guard |
+
+There is intentionally no `auto` mode. The main safety boundary for persistent
+file edits is mode selection: plan mode is non-mutating; edit mode permits
+validated file writes. Host process execution remains approval-gated because it
+can perform arbitrary side effects according to the approved executable.
+
 ## Persisted edits (`edit`, `write`)
 
-`edit(path, oldString, newString)` and `write(path, content)` skip the
-sandbox entirely and persist directly to disk via just-bash's
-`ReadWriteFs` (atomic temp file + rename). After a successful write,
-the bash overlay is synced (`overlay.writeFileSync`) so subsequent sandbox
-reads see the new content.
+`edit(path, oldString, newString)` and `write(path, content)` are available only
+in edit mode. They skip the bash sandbox entirely and persist directly to disk
+via just-bash's `ReadWriteFs` (atomic temp file + rename). After a successful
+write, the bash overlay is synced (`overlay.writeFileSync`) so subsequent
+sandbox reads see the new content.
+
+These tools do **not** prompt for per-call approval. They are top-level,
+scrollback-visible mutations, and the operator controls whether they are
+available by choosing edit mode versus plan mode.
 
 Both tools enforce:
 
 - **Root containment.** Paths are validated for absolute-path and `..`
   traversal at the tool boundary; `ReadWriteFs` enforces it again.
-- **Symlinks blocked.** Both `OverlayFs` and `ReadWriteFs` reject
-  symlink traversal by default.
-- **Ignore + secret deny refusal.** Writes to paths covered by gitignore,
-  the default secret deny list, or `secrets.deny` from
+- **Symlinks blocked.** Any existing symlink component in the destination path
+  causes the write/edit to fail before persistence, so edits cannot be routed
+  through a link to another location.
+- **Ignore + secret deny refusal.** Writes to paths covered by top-level or
+  nested gitignore rules, the default secret deny list, or `secrets.deny` from
   `.smoov/config.json` are refused with a clear error.
 - **`edit` uniqueness.** `oldString` must occur exactly once unless
   `replaceAll: true` is passed.
@@ -168,9 +197,5 @@ loud with a clear error pointing at the offending field.
 - **Tracked-but-not-denylisted files remain readable.** The model can
   still echo a non-secret tracked file's contents into its response.
   The sandbox stops writes and escape, not arbitrary read-and-quote.
-- **Nested `.gitignore` files** inside subdirectories are not yet
-  honored — only the top-level `.gitignore` and `.git/info/exclude`.
-  Use `secrets.deny` in `.smoov/config.json` for anything that needs to
-  be hidden regardless of nesting.
 - **Pipelines and redirects are not expressible in a single `bash`
   call.** Compose them in code (`stdin` parameter, multiple calls).

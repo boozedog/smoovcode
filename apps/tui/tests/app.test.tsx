@@ -21,7 +21,7 @@ vi.mock("ink", async (importOriginal) => {
 });
 
 async function flush() {
-  await new Promise((r) => setTimeout(r, 120));
+  await new Promise((r) => setTimeout(r, 300));
 }
 
 describe("App", () => {

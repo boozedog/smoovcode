@@ -1,5 +1,6 @@
-import { isAbsolute, normalize, resolve as resolvePath, sep } from "node:path";
-import { findInFiles, Lang, parse, type SgNode } from "@ast-grep/napi";
+import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
+import { isAbsolute, join, normalize, relative, resolve as resolvePath, sep } from "node:path";
+import { Lang, parse, type SgNode } from "@ast-grep/napi";
 import { tool } from "ai";
 import { Bash, type BashOptions, getCommandNames, OverlayFs, ReadWriteFs } from "just-bash";
 import { z } from "zod";
@@ -139,6 +140,11 @@ export function validateArgvShape(argv: readonly string[]): void {
   }
 }
 
+function isInsidePath(child: string, parent: string): boolean {
+  const rel = relative(parent, child);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
 export function createTools(opts: CreateToolsOptions = {}) {
   const root = opts.cwd ?? process.cwd();
   const overlay = new OverlayFs({ root });
@@ -183,11 +189,25 @@ export function createTools(opts: CreateToolsOptions = {}) {
     }
   }
 
+  function assertNoSymlink(relPath: string): void {
+    const normalized = normalize(relPath);
+    const parts = normalized.split(/[\\/]+/).filter((p) => p !== "" && p !== ".");
+    let current = root;
+    for (const part of parts) {
+      current = join(current, part);
+      if (!existsSync(current)) return;
+      if (lstatSync(current).isSymbolicLink()) {
+        throw new Error(`path contains a symlink and cannot be modified: ${relPath}`);
+      }
+    }
+  }
+
   // Atomic write to disk (temp file + rename), then mirror into the bash
   // overlay so subsequent sandbox reads see the new content.
   async function persistFile(relPath: string, content: string): Promise<void> {
     assertInsideRoot(relPath);
     assertNotIgnored(relPath);
+    assertNoSymlink(relPath);
     const tmpPath = `${relPath}.smoov.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
     await rwfs.writeFile(tmpPath, content);
     try {
@@ -307,6 +327,7 @@ export function createTools(opts: CreateToolsOptions = {}) {
       }),
       execute: async ({ path, oldString, newString, replaceAll }) => {
         assertInsideRoot(path);
+        assertNoSymlink(path);
         if (oldString === newString) {
           throw new Error("edit: oldString and newString are identical; nothing to do.");
         }
@@ -383,17 +404,35 @@ export function createTools(opts: CreateToolsOptions = {}) {
         }
 
         const resolvedPaths = paths!.map((p) => resolvePath(root, p));
+        const files: string[] = [];
+        const visit = (absPath: string): void => {
+          if (!isInsidePath(absPath, root)) {
+            throw new Error(`astGrep: path escapes the project root: ${absPath}`);
+          }
+          const rel = relative(root, absPath) || ".";
+          if (rel !== "." && ignoreMatcher.isIgnored(rel)) return;
+          const st = lstatSync(absPath);
+          if (st.isSymbolicLink()) return;
+          if (st.isDirectory()) {
+            for (const entry of readdirSync(absPath)) visit(join(absPath, entry));
+            return;
+          }
+          if (st.isFile()) files.push(absPath);
+        };
+        for (const p of resolvedPaths) visit(p);
+
         const collected: AstGrepMatch[] = [];
-        await findInFiles(
-          lang,
-          { paths: resolvedPaths, matcher: { rule: { pattern } } },
-          (err, nodes) => {
-            if (err) throw err;
-            for (const n of nodes) {
-              collected.push(formatMatch(n.getRoot().filename(), n));
-            }
-          },
-        );
+        for (const file of files) {
+          let rootNode: SgNode;
+          try {
+            rootNode = parse(lang, readFileSync(file, "utf8")).root();
+          } catch {
+            continue;
+          }
+          for (const n of rootNode.findAll(pattern)) {
+            collected.push(formatMatch(file, n));
+          }
+        }
         return { matches: collected };
       },
     }),

@@ -13,9 +13,4 @@ describe("ModeBadge", () => {
     const { lastFrame } = render(React.createElement(ModeBadge, { mode: "plan" }));
     expect(lastFrame()).toContain("[plan]");
   });
-
-  test("renders [auto] for auto mode", () => {
-    const { lastFrame } = render(React.createElement(ModeBadge, { mode: "auto" }));
-    expect(lastFrame()).toContain("[auto]");
-  });
 });

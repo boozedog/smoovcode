@@ -15,7 +15,7 @@ import { Spinner } from "./spinner.tsx";
 interface LiveTurnProps {
   agent: AgentLike;
   message: string;
-  /** Operating mode for this turn — `edit` (default), `plan`, or `auto`. */
+  /** Operating mode for this turn — `edit` (default) or `plan`. */
   mode?: Mode;
   /**
    * Called once per block as it transitions out of streaming/running into a
@@ -29,8 +29,8 @@ interface LiveTurnProps {
   onError?: (err: unknown) => void;
 }
 
-function streamingTextBlocks(blocks: Block[]): Block[] {
-  return blocks.filter((b) => b.kind === "text" && b.status === "streaming");
+function visibleTextBlocks(blocks: Block[], displayed: ReadonlySet<string>): Block[] {
+  return blocks.filter((b) => b.kind === "text" && !displayed.has(b.id));
 }
 
 function liveTextSignature(blocks: Block[], turnId: number): string {
@@ -98,6 +98,7 @@ export function LiveTurn({
   const turn = live ?? finalized;
 
   const emittedRef = React.useRef<Set<string>>(new Set());
+  const displayedRef = React.useRef<Set<string>>(new Set());
   const turnDoneRef = React.useRef(false);
   // Serialize emits so blocks reach `<Static>` in turn order even when their
   // pre-warm awaits resolve at different times.
@@ -105,7 +106,7 @@ export function LiveTurn({
   const liveTextSignatureRef = React.useRef<string>("");
 
   if (turn) {
-    const liveText = streamingTextBlocks(turn.blocks);
+    const liveText = visibleTextBlocks(turn.blocks, displayedRef.current);
     const signature = liveTextSignature(liveText, turn.id);
     if (signature !== liveTextSignatureRef.current) {
       liveTextSignatureRef.current = signature;
@@ -120,6 +121,14 @@ export function LiveTurn({
         emitChainRef.current = emitChainRef.current.then(async () => {
           await ensureBlockHighlighted(block);
           onBlockFinalize(block, turnId);
+          displayedRef.current.add(block.id);
+          if (block.kind === "text") {
+            const currentTurn = session.conversation.live ?? session.conversation.finalized.at(-1);
+            const remaining = currentTurn
+              ? visibleTextBlocks(currentTurn.blocks, displayedRef.current)
+              : [];
+            onLiveTextChange?.(remaining, turnId);
+          }
         });
       }
     }

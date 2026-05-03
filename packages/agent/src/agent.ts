@@ -73,15 +73,9 @@ export class Agent {
     this.history.push({ role: "user", content: userMessage });
 
     const mode: Mode = runOpts?.mode ?? this.opts.mode ?? "edit";
-    // Auto mode auto-approves every host call for the duration of this turn.
-    // The constructor-supplied approveHost is unchanged afterwards because we
-    // only swap the value passed into createTools below.
-    const effectiveApproveHost: HostApprover | undefined =
-      mode === "auto" ? async () => true : this.opts.approveHost;
-
     const toolsOpts: CreateToolsOptions = {
       ...(this.opts.cwd !== undefined ? { cwd: this.opts.cwd } : {}),
-      ...(effectiveApproveHost ? { approveHost: effectiveApproveHost } : {}),
+      ...(this.opts.approveHost ? { approveHost: this.opts.approveHost } : {}),
       ...(mode === "plan" ? { bashArgvGuard: isReadOnlyArgv } : {}),
     };
     const { bash, astGrep, write, edit } = createTools(toolsOpts);

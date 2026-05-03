@@ -28,7 +28,7 @@ describe("HighlightedCode", () => {
     expect(frame).toContain("const");
     expect(frame).toContain("console");
     // ...but the frame now contains ANSI escape codes from the highlighter.
-    expect(frame).toMatch(/\x1b\[/);
+    expect(frame).toContain("\u001B[");
   });
 
   test("renders JSON when lang='json'", async () => {

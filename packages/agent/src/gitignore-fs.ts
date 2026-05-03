@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type {
   BufferEncoding,
@@ -245,24 +245,42 @@ export interface LoadIgnorePatternsOptions {
 }
 
 /**
- * Read and merge ignore patterns from the project's .gitignore, .git/info/exclude,
- * the built-in default secret deny list, and any caller-supplied extras.
- *
- * Nested .gitignore files inside subdirectories are not yet honored — flag for
- * follow-up if the simple top-level + secret-deny coverage proves insufficient.
+ * Read and merge ignore patterns from the project's .gitignore, nested
+ * .gitignore files, .git/info/exclude, the built-in default secret deny list,
+ * and any caller-supplied extras.
  */
 export function loadIgnorePatterns(opts: LoadIgnorePatternsOptions): string[] {
   const lines: string[] = [];
-  const sources = [join(opts.root, ".gitignore"), join(opts.root, ".git", "info", "exclude")];
-  for (const src of sources) {
-    if (!existsSync(src)) continue;
+
+  function addFile(src: string, prefix = ""): void {
+    if (!existsSync(src)) return;
     const text = readFileSync(src, "utf8");
     for (const raw of text.split(/\r?\n/)) {
       const line = raw.trim();
       if (line === "" || line.startsWith("#")) continue;
-      lines.push(line);
+      if (prefix === "") {
+        lines.push(line);
+      } else if (line.startsWith("!")) {
+        lines.push(`!${prefix}/${line.slice(1).replace(/^\//, "")}`);
+      } else {
+        lines.push(`${prefix}/${line.replace(/^\//, "")}`);
+      }
     }
   }
+
+  function walk(dir: string, rel = ""): void {
+    addFile(join(dir, ".gitignore"), rel);
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name === ".git" || entry.name === "node_modules") continue;
+      const childRel = rel === "" ? entry.name : `${rel}/${entry.name}`;
+      walk(join(dir, entry.name), childRel);
+    }
+  }
+
+  walk(opts.root);
+  addFile(join(opts.root, ".git", "info", "exclude"));
+
   for (const p of DEFAULT_SECRET_DENY) lines.push(p);
   if (opts.extra) {
     for (const p of opts.extra) lines.push(p);

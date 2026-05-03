@@ -57,7 +57,7 @@ const stubExecutor = { name: "stub", execute: async () => ({ result: undefined }
 
 describe("runLoop", () => {
   let writes: string[] = [];
-  let writeSpy: ReturnType<typeof vi.spyOn> | undefined;
+  let writeSpy: { mockRestore: () => void } | undefined;
 
   beforeEach(() => {
     writes = [];
@@ -141,7 +141,7 @@ describe("runLoop", () => {
     await runLoop(stubExecutor);
     const out = writes.join("");
     // Dim opens once, contains both reasoning chunks, then resets before text.
-    expect(out).toMatch(/\x1b\[2mthinking: first second\x1b\[0m\nanswer/);
+    expect(out).toContain("\u001B[2mthinking: first second\u001B[0m\nanswer");
   });
 
   test("formats tool-call events with name and JSON input", async () => {

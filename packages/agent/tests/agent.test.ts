@@ -217,7 +217,8 @@ describe("Agent", () => {
   test("defaults the model to gpt-5", async () => {
     nextStreamParts = [];
     await collect(new Agent({ executor: stubExecutor }).run("hi"));
-    expect((lastStreamArgs?.model as { id: string }).id).toBe("gpt-5");
+    expect(lastStreamArgs).toBeDefined();
+    expect((lastStreamArgs!.model as { id: string }).id).toBe("gpt-5");
   });
 
   test("respects SMOOV_API_MODE override (responses)", async () => {
@@ -225,7 +226,8 @@ describe("Agent", () => {
     detectMock.mockRejectedValue(new Error("should not be called"));
     nextStreamParts = [];
     await collect(new Agent({ executor: stubExecutor, model: "m" }).run("hi"));
-    expect((lastStreamArgs?.model as { kind: string }).kind).toBe("responses");
+    expect(lastStreamArgs).toBeDefined();
+    expect((lastStreamArgs!.model as { kind: string }).kind).toBe("responses");
     expect(detectMock).not.toHaveBeenCalled();
   });
 
@@ -234,7 +236,8 @@ describe("Agent", () => {
     detectMock.mockRejectedValue(new Error("should not be called"));
     nextStreamParts = [];
     await collect(new Agent({ executor: stubExecutor, model: "m" }).run("hi"));
-    expect((lastStreamArgs?.model as { kind: string }).kind).toBe("chat");
+    expect(lastStreamArgs).toBeDefined();
+    expect((lastStreamArgs!.model as { kind: string }).kind).toBe("chat");
     expect(detectMock).not.toHaveBeenCalled();
   });
 
@@ -243,7 +246,8 @@ describe("Agent", () => {
     detectMock.mockRejectedValue(new Error("should not be called"));
     nextStreamParts = [];
     await collect(new Agent({ executor: stubExecutor }).run("hi"));
-    expect((lastStreamArgs?.model as { kind: string }).kind).toBe("chat");
+    expect(lastStreamArgs).toBeDefined();
+    expect((lastStreamArgs!.model as { kind: string }).kind).toBe("chat");
     expect(detectMock).not.toHaveBeenCalled();
   });
 
@@ -368,13 +372,6 @@ describe("Agent", () => {
       expect(sys).toMatch(/PLAN MODE/);
     });
 
-    test("auto mode appends the auto-mode system prompt", async () => {
-      nextStreamParts = [];
-      await collect(new Agent({ executor: stubExecutor }).run("hi", { mode: "auto" }));
-      const sys = lastStreamArgs?.system as string;
-      expect(sys).toMatch(/AUTO MODE/);
-    });
-
     test("plan-mode bash inside codemode rejects mutating argv", async () => {
       // The codemode-wrapped bash is the same instance, so the guard fires
       // inside the sandbox too. Calling `rm` from a codemode block must
@@ -407,31 +404,6 @@ describe("Agent", () => {
       // The bash tool will dispatch through the normal sandbox/host path; the
       // important thing here is no plan-mode guard is in the way.
       await expect(bash.execute({ argv: ["rm", "x"] }, {})).resolves.toBeDefined();
-    });
-
-    test("auto mode short-circuits approveHost — the constructor callback is never called", async () => {
-      // A throwing approver would normally bubble through the bash tool when
-      // a host argv is dispatched. In auto mode the agent swaps in an
-      // always-allow approver for the duration of the turn, so it never runs.
-      const approveSpy = vi.fn(async () => {
-        throw new Error("approveHost should not be called in auto mode");
-      });
-      nextStreamParts = [];
-      const agent = new Agent({ executor: stubExecutor, approveHost: approveSpy });
-      await collect(agent.run("hi", { mode: "auto" }));
-      const tools = lastStreamArgs?.tools as Tools;
-      const bash = tools.codemode.opts.tools.bash as ToolWithExec;
-      // Need to trigger the host path — pick a command not in the sandbox
-      // capability set. The guard will fall through to the host approver.
-      // Without a config allowlist, the call is rejected for not matching
-      // the allowlist before approval — but the approver itself must still
-      // never be invoked. Verify by spying it.
-      try {
-        await bash.execute({ argv: ["this-command-is-definitely-not-a-builtin-99999"] }, {});
-      } catch {
-        // ignore — the allowlist rejects the unknown command.
-      }
-      expect(approveSpy).not.toHaveBeenCalled();
     });
 
     test("constructor mode default applies when run is called without an override", async () => {

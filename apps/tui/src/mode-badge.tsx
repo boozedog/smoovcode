@@ -5,11 +5,10 @@ import React from "react";
 const MODE_COLORS: Record<Mode, string> = {
   edit: "green",
   plan: "yellow",
-  auto: "magenta",
 };
 
 /**
- * Single-line mode indicator. Renders as `[plan]`, `[edit]`, or `[auto]` in a
+ * Single-line mode indicator. Renders as `[plan]` or `[edit]` in a
  * mode-specific accent color. Theme-token plumbing arrives with #5.
  */
 export function ModeBadge({ mode }: { mode: Mode }): React.ReactElement {
