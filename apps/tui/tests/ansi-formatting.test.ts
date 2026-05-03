@@ -38,6 +38,42 @@ describe("ANSI formatting", () => {
     ).toContain(`${ESC}2mthinking: consider${ESC}22m`);
   });
 
+  test("codemode summary shows nested tool-call count instead of source line count", () => {
+    const block: Block = {
+      kind: "tool-call",
+      id: "b-0-0",
+      name: "codemode",
+      input: {
+        code: [
+          "async () => {",
+          "  await codemode.bash({ command: 'pwd' });",
+          "  await codemode.astGrep({ pattern: 'foo' });",
+          "}",
+        ].join("\n"),
+      },
+      status: "done",
+      output: { result: "ok" },
+    };
+
+    const output = stripAnsi(renderBlock(block).join("\n"));
+
+    expect(output).toContain("▶ [codemode] 2 calls");
+    expect(output).not.toContain("4 lines");
+  });
+
+  test("codemode summary prefers executor metrics when present", () => {
+    const block: Block = {
+      kind: "tool-call",
+      id: "b-0-0",
+      name: "codemode",
+      input: { code: "async () => await codemode.bash({ command: 'pwd' })" },
+      status: "done",
+      output: { result: "ok", metrics: { toolCalls: 3 } },
+    };
+
+    expect(stripAnsi(renderBlock(block).join("\n"))).toContain("▶ [codemode] 3 calls");
+  });
+
   test("wraps ANSI-styled text by visible width", () => {
     const term = new FakeTerminal({ rows: 10, cols: 10 });
     const renderer = new TerminalRenderer(term);

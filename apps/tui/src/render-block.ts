@@ -74,10 +74,9 @@ function renderCodemode(
   input: { code: string },
   expanded: boolean,
 ): string[] {
-  const lineCount = input.code === "" ? 0 : input.code.split("\n").length;
-  const metadata = [`${lineCount} line${lineCount === 1 ? "" : "s"}`];
   const metrics = extractMetrics(block.output);
-  if (metrics) metadata.push(`${metrics.toolCalls} call${metrics.toolCalls === 1 ? "" : "s"}`);
+  const toolCalls = metrics?.toolCalls ?? countCodemodeToolCalls(input.code);
+  const metadata = [`${toolCalls} call${toolCalls === 1 ? "" : "s"}`];
   metadata.push(`${formatBytes(byteLength(input.code))} in`);
   if (block.status === "done") metadata.push(`${formatBytes(byteLength(block.output))} out`);
   const glyph = expanded || block.status === "running" ? "▼" : "▶";
@@ -128,6 +127,10 @@ function renderEdit(
     lines.push(ansi.dim(`→ ${replacements} replacement${replacements === 1 ? "" : "s"}`));
   if (block.status === "error") lines.push(ansi.red(`✗ ${block.error}`));
   return lines;
+}
+
+function countCodemodeToolCalls(code: string): number {
+  return code.match(/\bcodemode\.[A-Za-z_$][\w$]*\s*\(/g)?.length ?? 0;
 }
 
 function byteLength(value: unknown): number {
