@@ -14,7 +14,6 @@ import {
   initialConversation,
   reduceConversation,
 } from "@smoovcode/ui-core";
-import { readMultiLine } from "./readMultiLine.js";
 
 const DIM = "\x1b[2m";
 const YELLOW = "\x1b[33m";
@@ -107,7 +106,7 @@ export async function runLoop(executor: Executor, model?: string) {
 
   try {
     while (true) {
-      const msg = await readMultiLine();
+      const msg = await rl.question("\n> ");
       if (!msg.trim()) continue;
 
       const started = renderEvent(render, { type: "turn-start", userMessage: msg });
