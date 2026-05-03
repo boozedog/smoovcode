@@ -57,7 +57,7 @@ describe("BlockView", () => {
     expect(lastFrame()).toContain("[t] {} ✗ boom");
   });
 
-  test("renders a running tool-call with a visible spinner glyph", () => {
+  test("renders a running tool-call with a static activity glyph for transcript stability", async () => {
     const block: Block = {
       kind: "tool-call",
       id: "b-0-0",
@@ -68,8 +68,9 @@ describe("BlockView", () => {
     const { lastFrame } = render(React.createElement(BlockView, { block }));
     const frame = lastFrame() ?? "";
     expect(frame).toContain("[echo]");
-    // The spinner emits one of the braille frames; assert at least one is present.
-    expect(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(frame)).toBe(true);
+    expect(frame).toContain("⠋");
+    await new Promise((r) => setTimeout(r, 180));
+    expect(lastFrame() ?? "").toBe(frame);
   });
 
   test("renders a completed codemode tool-call as a collapsed summary by default", () => {

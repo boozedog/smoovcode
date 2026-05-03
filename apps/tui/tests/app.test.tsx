@@ -20,9 +20,60 @@ vi.mock("ink", async (importOriginal) => {
   };
 });
 
+async function flush() {
+  await new Promise((r) => setTimeout(r, 120));
+}
+
 describe("App", () => {
   afterEach(() => {
     inkMocks.exit.mockClear();
+  });
+
+  test("renders a persistent bottom stats line", () => {
+    const agent = {
+      async *run() {
+        yield { type: "text" as const, delta: "" };
+      },
+    };
+    const { lastFrame } = render(
+      React.createElement(App, {
+        agent,
+        approvalQueue: new ApprovalQueue<HostApprovalRequest>(),
+        banner: "banner",
+        stats: { cwd: "/tmp/smoovcode", branch: "main", model: "gpt-x", effort: "medium" },
+      }),
+    );
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("/tmp/smoovcode (main)");
+    expect(frame).toContain("gpt-x • medium");
+  });
+
+  test("streams assistant chat text into the transcript without streaming tool-call blocks", async () => {
+    const never = new Promise<void>(() => {});
+    const agent = {
+      async *run() {
+        yield { type: "text" as const, delta: "hello" };
+        yield { type: "tool-call" as const, name: "codemode", input: { code: "1" } };
+        await never;
+      },
+    };
+    const { lastFrame, stdin } = render(
+      React.createElement(App, {
+        agent,
+        approvalQueue: new ApprovalQueue<HostApprovalRequest>(),
+        banner: "banner",
+      }),
+    );
+
+    stdin.write("go");
+    await flush();
+    stdin.write("\r");
+    await flush();
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("hello");
+    expect(frame).not.toContain("▶ [codemode]");
+    expect(frame).toContain("working");
   });
 
   test("Ctrl+C exits even when the prompt has focus", () => {

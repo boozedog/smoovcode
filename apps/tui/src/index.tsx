@@ -60,10 +60,19 @@ async function main() {
         }
       : {};
 
-  const instance = render(React.createElement(App, { agent: agentLike, approvalQueue, banner }), {
-    exitOnCtrlC: true,
-    ...renderOptions,
-  });
+  const instance = render(
+    React.createElement(App, {
+      agent: agentLike,
+      approvalQueue,
+      banner,
+      stats: { cwd: projectRoot, model: model ?? "gpt-5" },
+    }),
+    {
+      exitOnCtrlC: true,
+      alternateScreen: true,
+      ...renderOptions,
+    },
+  );
 
   const onSigint = () => {
     instance.unmount();

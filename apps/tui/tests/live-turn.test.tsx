@@ -38,6 +38,7 @@ describe("LiveTurn", () => {
     const agent: FakeAgent = {
       async *run() {
         await never;
+        yield { type: "text", delta: "" };
       },
     };
     const { lastFrame } = render(
@@ -54,11 +55,12 @@ describe("LiveTurn", () => {
     expect(SPINNER_FRAME.test(frame)).toBe(true);
   });
 
-  test("does not animate the working indicator, so terminal scrollback can stay put", async () => {
+  test("animates the working indicator in the live bottom-pane region", async () => {
     const never = new Promise<void>(() => {});
     const agent: FakeAgent = {
       async *run() {
         await never;
+        yield { type: "text", delta: "" };
       },
     };
     const { lastFrame } = render(
@@ -70,14 +72,11 @@ describe("LiveTurn", () => {
       }),
     );
     const first = lastFrame() ?? "";
-    await flush();
-    expect(lastFrame() ?? "").toBe(first);
+    await new Promise((r) => setTimeout(r, 180));
+    expect(lastFrame() ?? "").not.toBe(first);
   });
 
   test("does not render streaming text content live", async () => {
-    // Streaming text is not shown live — it only appears in scrollback once
-    // the block is finalized. While the turn runs, the live region is just a
-    // bounded spinner. Use the CLI if you want token-by-token streaming.
     const never = new Promise<void>(() => {});
     const agent: FakeAgent = {
       async *run() {
@@ -98,7 +97,7 @@ describe("LiveTurn", () => {
     const frame = lastFrame() ?? "";
     expect(frame).not.toContain("Hi, there!");
     expect(frame).toContain("working");
-    expect(frame).not.toContain("thinking");
+    expect(frame).not.toContain("thinking:");
   });
 
   test("renders one indented line per running tool-call, with the tool name", async () => {

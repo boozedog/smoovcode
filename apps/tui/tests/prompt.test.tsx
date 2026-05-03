@@ -32,6 +32,22 @@ describe("Prompt", () => {
     expect(lastFrame() ?? "").toContain("abc█");
   });
 
+  test("ignores SGR mouse reports instead of inserting them into the prompt", async () => {
+    const { lastFrame, stdin } = render(
+      React.createElement(Prompt, {
+        onSubmit: () => {},
+        mode: "edit",
+        onCycleMode: () => {},
+      }),
+    );
+    stdin.write("\u001B[<64;26;50M\u001B[<65;26;50M");
+    await flush();
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("> █");
+    expect(frame).not.toContain("<64;26;50M");
+    expect(frame).not.toContain("<65;26;50M");
+  });
+
   test("moves the cursor to the newest line after Shift+Enter", async () => {
     const { lastFrame, stdin } = render(
       React.createElement(Prompt, {

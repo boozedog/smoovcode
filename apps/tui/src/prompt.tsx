@@ -3,6 +3,8 @@ import { Box, Text, useInput } from "ink";
 import React from "react";
 import { ModeBadge } from "./mode-badge.tsx";
 
+const SGR_MOUSE_INPUT_RE = /^(?:\[?<\d+;\d+;\d+[mM])+$/;
+
 interface PromptProps {
   onSubmit: (message: string) => void;
   /** Current operating mode; rendered as a badge inline with the prompt. */
@@ -58,6 +60,9 @@ export function Prompt({ onSubmit, mode, onCycleMode }: PromptProps): React.Reac
         if (ls.length > 1) return ls.slice(0, -1);
         return ls;
       });
+      return;
+    }
+    if (SGR_MOUSE_INPUT_RE.test(input)) {
       return;
     }
     if (

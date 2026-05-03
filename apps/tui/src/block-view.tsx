@@ -2,7 +2,6 @@ import type { Block, ToolCallBlock } from "@smoovcode/ui-core";
 import { Box, Text } from "ink";
 import React from "react";
 import { HighlightedCode, type Lang } from "./highlighted-code.tsx";
-import { Spinner } from "./spinner.tsx";
 
 interface BlockViewProps {
   block: Block;
@@ -87,7 +86,8 @@ function ToolCallView({
     return React.createElement(EditView, { block, input: block.input });
   }
 
-  // Default: single-line rendering, with a leading spinner while running.
+  // Default: single-line rendering. Transcript rendering must stay static; live
+  // animation belongs in the fixed bottom pane.
   const head = `[${block.name}] ${JSON.stringify(block.input)}`;
   let tail = "";
   if (block.status === "done") {
@@ -100,7 +100,11 @@ function ToolCallView({
       Box,
       null,
       React.createElement(Text, null, head),
-      React.createElement(Box, { marginLeft: 1 }, React.createElement(Spinner, null)),
+      React.createElement(
+        Box,
+        { marginLeft: 1 },
+        React.createElement(Text, { color: "cyan" }, "⠋"),
+      ),
     );
   }
   return React.createElement(Text, null, head + tail);
@@ -145,7 +149,11 @@ function CodemodeView({
         React.createElement(Text, { dimColor: true }, `${lineLabel} · Ctrl+O to collapse`),
       ),
       block.status === "running"
-        ? React.createElement(Box, { marginLeft: 1 }, React.createElement(Spinner, null))
+        ? React.createElement(
+            Box,
+            { marginLeft: 1 },
+            React.createElement(Text, { color: "cyan" }, "⠋"),
+          )
         : null,
     ),
     React.createElement(HighlightedCode, { code: input.code, lang: "ts" }),
@@ -183,7 +191,11 @@ function WriteView({
         React.createElement(Text, { color: "cyan" }, input.path),
       ),
       block.status === "running"
-        ? React.createElement(Box, { marginLeft: 1 }, React.createElement(Spinner, null))
+        ? React.createElement(
+            Box,
+            { marginLeft: 1 },
+            React.createElement(Text, { color: "cyan" }, "⠋"),
+          )
         : null,
     ),
     lang
@@ -227,7 +239,11 @@ function EditView({
         React.createElement(Text, { color: "cyan" }, input.path),
       ),
       block.status === "running"
-        ? React.createElement(Box, { marginLeft: 1 }, React.createElement(Spinner, null))
+        ? React.createElement(
+            Box,
+            { marginLeft: 1 },
+            React.createElement(Text, { color: "cyan" }, "⠋"),
+          )
         : null,
     ),
     React.createElement(Text, { color: "red" }, oldDiff),

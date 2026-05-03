@@ -10,6 +10,7 @@ import {
   isWriteInput,
 } from "./block-view.tsx";
 import { ensureHighlighted } from "./highlight-cache.ts";
+import { Spinner } from "./spinner.tsx";
 
 interface LiveTurnProps {
   agent: AgentLike;
@@ -23,7 +24,17 @@ interface LiveTurnProps {
   onBlockFinalize: (block: Block, turnId: number) => void;
   /** Called once when the turn-end event has finalized all blocks. */
   onTurnDone: (turnId: number) => void;
+  /** Current streaming assistant text blocks. Tool-call blocks intentionally do not stream. */
+  onLiveTextChange?: (blocks: Block[], turnId: number) => void;
   onError?: (err: unknown) => void;
+}
+
+function streamingTextBlocks(blocks: Block[]): Block[] {
+  return blocks.filter((b) => b.kind === "text" && b.status === "streaming");
+}
+
+function liveTextSignature(blocks: Block[], turnId: number): string {
+  return `${turnId}:${blocks.map((b) => `${b.id}:${b.kind === "text" ? b.text : ""}`).join("|")}`;
 }
 
 function isBlockFinal(b: Block): boolean {
@@ -62,8 +73,8 @@ async function ensureBlockHighlighted(b: Block): Promise<void> {
 
 /**
  * Live region for one in-progress turn. Deliberately bounded to a fixed
- * number of lines so it can never exceed terminal height: a single static
- * "working" indicator plus one indented static indicator per currently-running
+ * number of lines in the fixed bottom pane: an animated "working" indicator
+ * plus one indented animated indicator per currently-running
  * tool-call. Streaming text/reasoning are not rendered live — they emit to
  * scrollback once finalized via `onBlockFinalize`. (If you want to watch the
  * model think token-by-token, use the CLI.)
@@ -74,6 +85,7 @@ export function LiveTurn({
   mode,
   onBlockFinalize,
   onTurnDone,
+  onLiveTextChange,
   onError,
 }: LiveTurnProps): React.ReactElement | null {
   const session = useAgentSession({
@@ -90,8 +102,16 @@ export function LiveTurn({
   // Serialize emits so blocks reach `<Static>` in turn order even when their
   // pre-warm awaits resolve at different times.
   const emitChainRef = React.useRef<Promise<void>>(Promise.resolve());
+  const liveTextSignatureRef = React.useRef<string>("");
 
   if (turn) {
+    const liveText = streamingTextBlocks(turn.blocks);
+    const signature = liveTextSignature(liveText, turn.id);
+    if (signature !== liveTextSignatureRef.current) {
+      liveTextSignatureRef.current = signature;
+      queueMicrotask(() => onLiveTextChange?.(liveText, turn.id));
+    }
+
     for (const b of turn.blocks) {
       if (isBlockFinal(b) && !emittedRef.current.has(b.id)) {
         emittedRef.current.add(b.id);
@@ -109,6 +129,7 @@ export function LiveTurn({
     turnDoneRef.current = true;
     const turnId = finalized.id;
     emitChainRef.current = emitChainRef.current.then(() => {
+      onLiveTextChange?.([], turnId);
       onTurnDone(turnId);
     });
   }
@@ -116,6 +137,7 @@ export function LiveTurn({
     turnDoneRef.current = true;
     const err = session.error;
     emitChainRef.current = emitChainRef.current.then(() => {
+      onLiveTextChange?.([], 0);
       onError?.(err);
     });
   }
@@ -134,18 +156,18 @@ export function LiveTurn({
     React.createElement(
       Box,
       { key: "working" },
-      React.createElement(Text, { color: "cyan" }, "⠋"),
+      React.createElement(Spinner, null),
       React.createElement(
         Box,
         { marginLeft: 1 },
-        React.createElement(Text, { dimColor: true }, "working"),
+        React.createElement(Text, { dimColor: true }, mode ? `working (${mode})` : "working"),
       ),
     ),
     ...runningToolCalls.map((b) =>
       React.createElement(
         Box,
         { key: b.id, marginLeft: 2 },
-        React.createElement(Text, { color: "cyan" }, "⠋"),
+        React.createElement(Spinner, null),
         React.createElement(Box, { marginLeft: 1 }, React.createElement(Text, null, `[${b.name}]`)),
       ),
     ),
