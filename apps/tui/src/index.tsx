@@ -42,11 +42,7 @@ async function main() {
   const banner = `smoovcode (backend: ${executor.name}, root: ${projectRoot}) — ctrl-c to exit`;
 
   const agentLike = {
-    run: (msg: string, opts?: { signal?: AbortSignal } & AgentRunOptions) => {
-      const runOpts: AgentRunOptions | undefined =
-        opts?.mode !== undefined ? { mode: opts.mode } : undefined;
-      return agent.run(msg, runOpts);
-    },
+    run: (msg: string, opts?: { signal?: AbortSignal } & AgentRunOptions) => agent.run(msg, opts),
   };
 
   const renderOptions =
@@ -54,8 +50,7 @@ async function main() {
       ? {
           // Opt-in: some terminals echo kitty negotiation/reset sequences like
           // `^[[?0u` into the scrollback. Shift+Enter may behave like Enter
-          // when this is disabled, but Shift+Tab mode cycling still works in
-          // common terminals.
+          // when this is disabled in common terminals.
           kittyKeyboard: { mode: "auto" as const },
         }
       : {};

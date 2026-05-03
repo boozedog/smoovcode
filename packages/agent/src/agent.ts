@@ -4,8 +4,7 @@ import { type ModelMessage, stepCountIs, streamText } from "ai";
 import { type ApiMode, detectApiMode } from "./api-mode.ts";
 import type { Executor } from "./executor.ts";
 import type { HostApprover } from "./host-exec.ts";
-import { isReadOnlyArgv, type Mode, modeSystemPrompt } from "./mode.ts";
-import { createTools, type CreateToolsOptions } from "./tools.ts";
+import { createToolSession, type ToolSession } from "./tool-session.ts";
 
 const baseURL = process.env.SMOOV_BASE_URL ?? "https://api.openai.com/v1";
 const apiKey = process.env.SMOOV_API_KEY ?? process.env.OPENAI_API_KEY;
@@ -44,17 +43,11 @@ export interface AgentOptions {
    * spawn. Defaults to deny-all when omitted.
    */
   approveHost?: HostApprover;
-  /**
-   * Default operating mode for `run()`. May be overridden per-call via the
-   * second argument to `run()`. Defaults to `"edit"`.
-   */
-  mode?: Mode;
+  /** Existing staged tool session. Defaults to a new session owned by this Agent. */
+  session?: ToolSession;
 }
 
-export interface AgentRunOptions {
-  /** Override the agent's default mode for this turn only. */
-  mode?: Mode;
-}
+export interface AgentRunOptions {}
 
 export type AgentEvent =
   | { type: "text"; delta: string }
@@ -62,23 +55,29 @@ export type AgentEvent =
   | { type: "tool-call"; name: string; input: unknown }
   | { type: "tool-result"; name: string; output: unknown }
   | { type: "tool-error"; name: string; error: string }
+  | { type: "usage"; inputTokens: number; outputTokens: number }
   | { type: "error"; error: string };
 
 export class Agent {
   private readonly history: ModelMessage[] = [];
+  readonly session: ToolSession;
 
-  constructor(private readonly opts: AgentOptions) {}
+  constructor(private readonly opts: AgentOptions) {
+    this.session =
+      opts.session ??
+      createToolSession({
+        ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+        ...(opts.approveHost ? { approveHost: opts.approveHost } : {}),
+      });
+  }
 
-  async *run(userMessage: string, runOpts?: AgentRunOptions): AsyncGenerator<AgentEvent> {
+  async *run(userMessage: string, _runOpts?: AgentRunOptions): AsyncGenerator<AgentEvent> {
     this.history.push({ role: "user", content: userMessage });
 
-    const mode: Mode = runOpts?.mode ?? this.opts.mode ?? "edit";
-    const toolsOpts: CreateToolsOptions = {
+    const { bash, astGrep, write, edit } = this.session.tools({
       ...(this.opts.cwd !== undefined ? { cwd: this.opts.cwd } : {}),
       ...(this.opts.approveHost ? { approveHost: this.opts.approveHost } : {}),
-      ...(mode === "plan" ? { bashArgvGuard: isReadOnlyArgv } : {}),
-    };
-    const { bash, astGrep, write, edit } = createTools(toolsOpts);
+    });
     // The split: today's read-style capabilities (bash, astGrep) live inside
     // codemode for orchestration (loops, Promise.all, intermediate values).
     // Mutating capabilities (write, edit) are top-level tools so each mutation
@@ -90,17 +89,12 @@ export class Agent {
       executor: this.opts.executor,
     });
 
-    const baseSystem = this.opts.system ?? DEFAULT_SYSTEM_PROMPT;
-    const modePrompt = modeSystemPrompt(mode);
-    const system = modePrompt ? `${baseSystem}\n\n${modePrompt}` : baseSystem;
-
-    // Plan mode drops the known mutating top-level tools entirely so the model
-    // can't even attempt them — combined with the bash argv guard above, this
-    // closes off the currently exposed mutation paths. Do not rely on the
-    // executor itself as a mutation boundary; new codemode tools must be
-    // classified/gated by capability.
-    const tools: { codemode: typeof codemode; write?: typeof write; edit?: typeof edit } =
-      mode === "plan" ? { codemode } : { codemode, write, edit };
+    const system = this.opts.system ?? DEFAULT_SYSTEM_PROMPT;
+    const tools: { codemode: typeof codemode; write: typeof write; edit: typeof edit } = {
+      codemode,
+      write,
+      edit,
+    };
 
     const apiMode = await resolveApiMode();
     const modelId = this.opts.model ?? "gpt-5";
@@ -144,8 +138,23 @@ export class Agent {
         yield { type: "error", error: String(part.error) };
       } else if (part.type === "start-step") {
         stepCount += 1;
+      } else if (part.type === "finish-step") {
+        if (part.usage) {
+          yield {
+            type: "usage",
+            inputTokens: part.usage.inputTokens ?? 0,
+            outputTokens: part.usage.outputTokens ?? 0,
+          };
+        }
       } else if (part.type === "finish") {
         finishReason = (part as { finishReason?: string }).finishReason;
+        if (part.totalUsage) {
+          yield {
+            type: "usage",
+            inputTokens: part.totalUsage.inputTokens ?? 0,
+            outputTokens: part.totalUsage.outputTokens ?? 0,
+          };
+        }
       }
     }
 
@@ -180,13 +189,13 @@ const DEFAULT_SYSTEM_PROMPT = `You are smoovcode, a coding agent. You have two t
 - Use it for grep / find / cat / ls / ast-grep, multi-step exploration, filtering, summarizing, parallel reads via \`Promise.all\`, and computing edit plans.
 - Tool result shapes — read them, don't guess. Tool results are objects, not arrays. \`astGrep\` returns \`{ matches: [...] }\`, \`bash\` returns \`{ stdout, stderr, exitCode }\`. Reading \`result.length\` on these silently yields \`undefined\` (and serializes as \`{}\`), which is the most common reason for an analysis loop to stall. If you're unsure of a tool's return shape, do one small probe call and \`return\` the raw value before building on top of it.
 - Console output is captured. Anything you \`console.log\` / \`console.error\` inside a codemode block is returned alongside the result and visible to you on the next turn. Use it freely to introspect intermediate values.
-- The executor is not a mutation boundary. Codemode is read-only only because the tools exposed there are treated as read-style capabilities: \`codemode.bash\` writes are in-memory only and discarded after the call, and \`codemode.astGrep\` only searches. If a mutating tool is exposed to codemode, it can mutate through its host/tool bridge.
+- The executor is not a mutation boundary. Codemode is safe because only staged/sandbox capabilities are exposed there: \`codemode.bash\` writes go to the session overlay and never touch host disk, and \`codemode.astGrep\` only searches.
 
-\`write\` and \`edit\` (mutations, top-level):
-- \`write({ path, content })\` creates or overwrites a file with full contents. Use for new files or whole-file rewrites.
-- \`edit({ path, oldString, newString, replaceAll? })\` replaces a substring; \`oldString\` must be unique unless \`replaceAll: true\`. Use for surgical edits.
-- Each call is one atomic, user-visible mutation. Prefer many small \`edit\` calls over one large \`write\` when you're patching an existing file — the diffs are clearer and a failure leaves the rest intact.
-- Compute the plan inside \`codemode\` (read files, decide changes), then emit \`write\` / \`edit\` calls outside it. Don't try to mutate inside codemode; this keeps mutations atomic and visible rather than relying on the executor to prevent side effects.
+\`write\` and \`edit\` (staged mutations, top-level):
+- \`write({ path, content })\` stages a create or overwrite with full contents. Use for new files or whole-file rewrites.
+- \`edit({ path, oldString, newString, replaceAll? })\` stages a substring replacement; \`oldString\` must be unique unless \`replaceAll: true\`. Use for surgical edits.
+- Staged changes are visible to later tool calls and later turns in this chat, but host disk is not modified until an explicit future apply action.
+- Prefer many small \`edit\` calls over one large \`write\` when you're patching an existing file — the staged diffs are clearer and a failure leaves the rest intact.
 
 Step economy:
 - Each top-level tool call is one step (max 30). Batch reads inside a single codemode block where you can.

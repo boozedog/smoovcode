@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
@@ -201,23 +201,29 @@ describe("tools.write", () => {
     rmSync(sandbox, { recursive: true, force: true });
   });
 
-  test("creates a new file on real disk", async () => {
-    const { write } = createTools({ cwd: sandbox });
+  test("stages a new file without touching host disk", async () => {
+    const { write, bash } = createTools({ cwd: sandbox });
     await invoke(write, { path: "hello.txt", content: "hi\n" });
-    expect(readFileSync(join(sandbox, "hello.txt"), "utf8")).toBe("hi\n");
+    const out = (await invoke(bash, { argv: ["cat", "hello.txt"] })) as { stdout: string };
+    expect(out.stdout).toBe("hi\n");
+    expect(existsSync(join(sandbox, "hello.txt"))).toBe(false);
   });
 
-  test("overwrites an existing file", async () => {
+  test("stages an overwrite and leaves host disk unchanged", async () => {
     writeFileSync(join(sandbox, "x.txt"), "old");
-    const { write } = createTools({ cwd: sandbox });
+    const { write, bash } = createTools({ cwd: sandbox });
     await invoke(write, { path: "x.txt", content: "new" });
-    expect(readFileSync(join(sandbox, "x.txt"), "utf8")).toBe("new");
+    const out = (await invoke(bash, { argv: ["cat", "x.txt"] })) as { stdout: string };
+    expect(out.stdout).toBe("new");
+    expect(readFileSync(join(sandbox, "x.txt"), "utf8")).toBe("old");
   });
 
-  test("creates parent directories as needed", async () => {
-    const { write } = createTools({ cwd: sandbox });
+  test("stages parent directories as needed", async () => {
+    const { write, bash } = createTools({ cwd: sandbox });
     await invoke(write, { path: "a/b/c.txt", content: "deep" });
-    expect(readFileSync(join(sandbox, "a/b/c.txt"), "utf8")).toBe("deep");
+    const out = (await invoke(bash, { argv: ["cat", "a/b/c.txt"] })) as { stdout: string };
+    expect(out.stdout).toBe("deep");
+    expect(existsSync(join(sandbox, "a/b/c.txt"))).toBe(false);
   });
 
   test("syncs the bash overlay so a subsequent cat sees the new content", async () => {
@@ -264,16 +270,18 @@ describe("tools.edit", () => {
     rmSync(sandbox, { recursive: true, force: true });
   });
 
-  test("replaces a unique occurrence and persists to disk", async () => {
+  test("replaces a unique occurrence in the staged view", async () => {
     writeFileSync(join(sandbox, "f.txt"), "alpha beta gamma\n");
-    const { edit } = createTools({ cwd: sandbox });
+    const { edit, bash } = createTools({ cwd: sandbox });
     const out = (await invoke(edit, {
       path: "f.txt",
       oldString: "beta",
       newString: "BETA",
     })) as { replacements: number };
     expect(out.replacements).toBe(1);
-    expect(readFileSync(join(sandbox, "f.txt"), "utf8")).toBe("alpha BETA gamma\n");
+    const cat = (await invoke(bash, { argv: ["cat", "f.txt"] })) as { stdout: string };
+    expect(cat.stdout).toBe("alpha BETA gamma\n");
+    expect(readFileSync(join(sandbox, "f.txt"), "utf8")).toBe("alpha beta gamma\n");
   });
 
   test("rejects when oldString occurs more than once and replaceAll is false", async () => {
@@ -284,9 +292,9 @@ describe("tools.edit", () => {
     );
   });
 
-  test("replaceAll substitutes every occurrence", async () => {
+  test("replaceAll substitutes every occurrence in the staged view", async () => {
     writeFileSync(join(sandbox, "dup.txt"), "x x x");
-    const { edit } = createTools({ cwd: sandbox });
+    const { edit, bash } = createTools({ cwd: sandbox });
     const out = (await invoke(edit, {
       path: "dup.txt",
       oldString: "x",
@@ -294,7 +302,9 @@ describe("tools.edit", () => {
       replaceAll: true,
     })) as { replacements: number };
     expect(out.replacements).toBe(3);
-    expect(readFileSync(join(sandbox, "dup.txt"), "utf8")).toBe("y y y");
+    const cat = (await invoke(bash, { argv: ["cat", "dup.txt"] })) as { stdout: string };
+    expect(cat.stdout).toBe("y y y");
+    expect(readFileSync(join(sandbox, "dup.txt"), "utf8")).toBe("x x x");
   });
 
   test("rejects when the file does not exist", async () => {

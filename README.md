@@ -31,7 +31,7 @@ Multiple executor backends for running AI-generated codemode orchestration code:
 | `local`      | Direct Node.js execution with timeout protection |
 | `cloudflare` | Cloudflare Workers runtime (planned)             |
 
-Executors are not mutation boundaries. They control where the model-authored codemode program runs; side effects come from the tools/capabilities exposed to that program. Today smoovcode exposes only read-style tools inside codemode, while persistent mutations use top-level `write`/`edit` calls for visibility and mode-based gating.
+Executors are not mutation boundaries. They control where the model-authored codemode program runs; side effects come from the tools/capabilities exposed to that program. Today smoovcode stages file changes in a session-scoped overlay: sandbox `bash` writes and top-level `write`/`edit` calls are visible to later turns, but host disk is not changed until an explicit apply workflow.
 
 ### Agent Tools
 
@@ -39,17 +39,17 @@ The AI agent has access to these powerful tools:
 
 - **`bash`** — Execute a single argv command through the sandbox or, when explicitly allowlisted, through host execution with per-call approval
 - **`astGrep`** — Structural code search using AST patterns (JavaScript, TypeScript, TSX, HTML, CSS)
-- **`write`** — Create or overwrite files atomically in edit mode
-- **`edit`** — Modify existing files with precise text replacement in edit mode
+- **`write`** — Stage file creates or overwrites in the session overlay
+- **`edit`** — Stage precise text replacements in the session overlay
 
 ### Security Features
 
-- **Two operating modes** — `plan` mode removes persistent write tools and restricts bash to read-only argv; `edit` mode exposes validated file mutation tools
+- **Session-scoped staged filesystem** — The model can stage changes; host disk is not modified by sandbox/write/edit tools
+- **Dirty-session warning** — The TUI warns before discarding unapplied staged changes on exit
 - **Host execution approval** — Interactive prompts before running allowlisted host commands
 - **Gitignore-aware** — Respects top-level and nested project ignore patterns
 - **Secret filtering** — Built-in deny lists for sensitive files
 - **Sandbox timeouts** — Tight execution limits and wall-clock timeouts
-- **Read-only overlay** — Sandbox writes stay in memory and never persist to disk
 
 ## Quick Start
 
@@ -169,11 +169,11 @@ The codebase is organized into clear separation of concerns:
 ### Tool Execution Flow
 
 1. AI generates tool calls during streaming response.
-2. Top-level tools execute in the host agent process (`codemode`, and in edit mode only, `write` / `edit`).
+2. Top-level tools execute in the host agent process (`codemode`, `write`, `edit`).
 3. `codemode` runs model-authored TypeScript in the configured executor.
 4. The tools exposed to codemode (`bash`, `astGrep`) bridge back to host-side implementations.
-5. `bash` dispatches argv either to just-bash's in-memory sandbox or to a real host process only when the argv matches `.smoov/config.json` / `.smoov/config.local.json` and the user approves that call.
-6. Persistent write tools (`write`, `edit`) stay top-level for visibility. They are mode-gated rather than approval-gated: unavailable in plan mode, available in edit mode after root/ignore/symlink validation.
+5. Sandbox `bash`, `write`, and `edit` share the Agent's session-scoped OverlayFs; staged changes survive across turns and do not touch host disk.
+6. Host-backed `bash` dispatches argv to a real process only when the argv matches `.smoov/config.json` / `.smoov/config.local.json` and the user approves that call.
 7. Results stream back to the AI for continuation.
 
 The safety boundary is the capability policy: which tools are exposed where, how they are gated, and how visibly their effects are reported. A mutating capability exposed to codemode could mutate even when the codemode program itself runs in QuickJS.

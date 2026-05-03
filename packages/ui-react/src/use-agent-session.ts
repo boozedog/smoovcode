@@ -1,4 +1,4 @@
-import type { AgentEvent, Mode } from "@smoovcode/agent";
+import type { AgentEvent } from "@smoovcode/agent";
 import {
   type ConversationEvent,
   type ConversationState,
@@ -10,7 +10,6 @@ import { useMountEffect } from "./use-mount-effect.ts";
 
 export interface AgentRunOptions {
   signal?: AbortSignal;
-  mode?: Mode;
 }
 
 export interface AgentLike {
@@ -20,8 +19,6 @@ export interface AgentLike {
 export interface UseAgentSessionOptions {
   agent: AgentLike;
   message: string;
-  /** Operating mode for this turn. Defaults to whatever the agent decides. */
-  mode?: Mode;
 }
 
 export interface AgentSessionState {
@@ -46,11 +43,7 @@ function startState(message: string): AgentSessionState {
  * `reduceConversation`, aborts the agent on unmount, and surfaces stream
  * errors. Use a per-turn `key` on the parent to drive fresh sessions.
  */
-export function useAgentSession({
-  agent,
-  message,
-  mode,
-}: UseAgentSessionOptions): AgentSessionState {
+export function useAgentSession({ agent, message }: UseAgentSessionOptions): AgentSessionState {
   const [state, setState] = useState<AgentSessionState>(() => startState(message));
 
   useMountEffect(() => {
@@ -58,10 +51,7 @@ export function useAgentSession({
 
     void (async () => {
       try {
-        for await (const ev of agent.run(message, {
-          signal: ctrl.signal,
-          ...(mode !== undefined ? { mode } : {}),
-        })) {
+        for await (const ev of agent.run(message, { signal: ctrl.signal })) {
           if (ctrl.signal.aborted) return;
           setState((prev) => ({
             ...prev,

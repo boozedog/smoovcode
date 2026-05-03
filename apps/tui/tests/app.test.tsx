@@ -94,4 +94,28 @@ describe("App", () => {
 
     expect(inkMocks.exit).toHaveBeenCalledTimes(1);
   });
+
+  test("warns before discarding dirty staged changes on exit", async () => {
+    const agent = {
+      session: { dirty: { isDirty: () => true } },
+      async *run() {
+        yield { type: "text" as const, delta: "" };
+      },
+    };
+    const { lastFrame, stdin } = render(
+      React.createElement(App, {
+        agent,
+        approvalQueue: new ApprovalQueue<HostApprovalRequest>(),
+        banner: "banner",
+      }),
+    );
+
+    stdin.write("\u0003");
+    await flush();
+
+    expect(lastFrame() ?? "").toContain("Exit and discard");
+    expect(inkMocks.exit).not.toHaveBeenCalled();
+    stdin.write("y");
+    expect(inkMocks.exit).toHaveBeenCalledTimes(1);
+  });
 });

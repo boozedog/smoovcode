@@ -39,11 +39,17 @@ export type Block = TextBlock | ReasoningBlock | ToolCallBlock | ErrorBlock;
  */
 export type ToolCallEntry = ToolCallBlock;
 
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export interface Turn {
   id: number;
   userMessage: string;
   blocks: Block[];
   status: "streaming" | "done";
+  usage?: TokenUsage;
 }
 
 export interface ConversationState {
@@ -59,6 +65,7 @@ export type ConversationEvent =
   | { type: "tool-call"; name: string; input: unknown }
   | { type: "tool-result"; name: string; output: unknown }
   | { type: "tool-error"; name: string; error: string }
+  | { type: "usage"; inputTokens: number; outputTokens: number }
   | { type: "error"; error: string };
 
 export const initialConversation: ConversationState = { finalized: [], live: null };
@@ -191,6 +198,14 @@ export function reduceConversation(
       next[idx] = { ...target, status: "error", error: event.error };
       return { ...state, live: { ...live, blocks: next } };
     }
+    case "usage":
+      return {
+        ...state,
+        live: {
+          ...live,
+          usage: { inputTokens: event.inputTokens, outputTokens: event.outputTokens },
+        },
+      };
     case "error": {
       const finalized = closeStreamingText(live.blocks);
       const fresh: ErrorBlock = {

@@ -15,22 +15,18 @@ bridge even if the orchestration code runs in QuickJS.
 
 smoovcode's current policy is:
 
-- codemode receives only read-style capabilities (`bash`, `astGrep`),
-- persistent file mutations (`write`, `edit`) are top-level tool calls, so each
-  mutation is visible in the event stream and scrollback,
-- there are exactly two operating modes:
-  - **edit mode** — `write` and `edit` are exposed and execute directly after
-    passing path/ignore/symlink validation,
-  - **plan mode** — `write` and `edit` are not exposed at all, and `bash` is
-    tightened to a conservative read-only argv allowlist,
-- host-backed `bash` execution is always separately gated by the project
-  allowlist and per-call user approval, regardless of mode.
+- codemode receives only staged/sandbox capabilities (`bash`, `astGrep`),
+- `write` and `edit` are top-level tool calls and stage changes in the session
+  overlay instead of writing host disk,
+- sandbox-backed `bash` writes also stage in the same session overlay and are
+  visible to later tool calls and turns,
+- host-backed `bash` execution is separately gated by the project allowlist and
+  per-call user approval.
 
-`write` and `edit` are deliberately **mode-gated, not per-call approval-gated**.
-Use plan mode when you want investigation and a proposed plan without persistent
-file changes; switch to edit mode when direct file mutations are acceptable.
-When adding new tools, classify and gate them by capability. Do not assume that
-placing a tool behind an executor makes it non-mutating.
+There are no plan/edit modes. The model can stage; the user decides whether to
+apply staged changes in a future explicit workflow. When adding new tools,
+classify and gate them by capability. Do not assume that placing a tool behind
+an executor makes it non-mutating.
 
 ## Two-axis bash execution model
 
@@ -71,9 +67,9 @@ model a clearer error before it hits them.
 
 - **Root-bounded.** Reads come from the project root via OverlayFs.
   Symlinks that escape the root are rejected.
-- **No real-disk writes.** Sandbox writes go to an in-memory overlay
-  layer; nothing persists to disk. (Persistence happens through the
-  `edit` and `write` tools, see below.)
+- **No real-disk writes.** Sandbox writes go to the session overlay;
+  nothing persists to disk. The same overlay backs later tool calls and
+  later turns in the chat.
 - **Gitignore + secret deny filtered reads.** A `GitignoreFs` adapter
   consults patterns from:
   - the project's top-level `.gitignore`,
@@ -92,31 +88,16 @@ model a clearer error before it hits them.
   to the just-bash interpreter, which stops at the next statement boundary.
 - **Network, Python, JavaScript exec** all disabled (just-bash defaults).
 
-## Operating modes
+## Staged edits (`edit`, `write`)
 
-smoovcode has two modes:
+`edit(path, oldString, newString)` and `write(path, content)` stage changes in
+the session-scoped OverlayFs. They do not modify host disk. After a staged
+write, subsequent sandbox reads see the new content because all tools in the
+chat share the same session filesystem.
 
-| Mode   | Persistent file mutation                                         | `bash` inside codemode                            | Host-backed `bash`                                                                  |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `edit` | `write` / `edit` exposed; validation-gated, no per-call approval | sandbox commands plus allowlisted host dispatch   | allowlist + per-call user approval                                                  |
-| `plan` | `write` / `edit` not exposed                                     | read-only argv guard before sandbox/host dispatch | allowlist + per-call user approval, and only if the argv passes the read-only guard |
-
-There is intentionally no `auto` mode. The main safety boundary for persistent
-file edits is mode selection: plan mode is non-mutating; edit mode permits
-validated file writes. Host process execution remains approval-gated because it
-can perform arbitrary side effects according to the approved executable.
-
-## Persisted edits (`edit`, `write`)
-
-`edit(path, oldString, newString)` and `write(path, content)` are available only
-in edit mode. They skip the bash sandbox entirely and persist directly to disk
-via just-bash's `ReadWriteFs` (atomic temp file + rename). After a successful
-write, the bash overlay is synced (`overlay.writeFileSync`) so subsequent
-sandbox reads see the new content.
-
-These tools do **not** prompt for per-call approval. They are top-level,
-scrollback-visible mutations, and the operator controls whether they are
-available by choosing edit mode versus plan mode.
+These tools do **not** prompt for per-call approval because they are
+non-persistent staged mutations. They are still top-level and scrollback-visible
+so the operator can inspect what was staged.
 
 Both tools enforce:
 

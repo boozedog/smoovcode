@@ -1,7 +1,7 @@
 export { Agent } from "./agent.ts";
 export type { AgentEvent, AgentOptions, AgentRunOptions } from "./agent.ts";
-export { isReadOnlyArgv, isToolBlockedInMode, MODES, modeSystemPrompt, nextMode } from "./mode.ts";
-export type { Mode } from "./mode.ts";
+export { createToolSession, DirtyTrackingFs, SimpleDirtyTracker } from "./tool-session.ts";
+export type { DirtyTracker, ToolSession } from "./tool-session.ts";
 export { detectApiMode } from "./api-mode.ts";
 export { findProjectRoot } from "./find-project-root.ts";
 export type { ApiMode } from "./api-mode.ts";
@@ -11,7 +11,7 @@ export { CloudflareExecutor } from "./executors/cloudflare.ts";
 export { LocalExecutor } from "./executors/local.ts";
 export { QuickJSExecutor } from "./executors/quickjs.ts";
 export { createTools } from "./tools.ts";
-export type { CreateToolsOptions } from "./tools.ts";
+export type { AgentTools, CreateToolsOptions } from "./tools.ts";
 export type {
   HostApprovalRequest,
   HostApprover,

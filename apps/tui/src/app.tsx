@@ -1,4 +1,4 @@
-import { type HostApprovalRequest, type Mode, nextMode } from "@smoovcode/agent";
+import { type HostApprovalRequest } from "@smoovcode/agent";
 import { type ApprovalQueue, type Block } from "@smoovcode/ui-core";
 import { type AgentLike, useApprovalQueue, useMountEffect } from "@smoovcode/ui-react";
 import {
@@ -29,7 +29,6 @@ export interface AppProps {
 interface PendingTurn {
   key: number;
   message: string;
-  mode: Mode;
 }
 
 type StaticItem =
@@ -83,7 +82,7 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
   const [pending, setPending] = React.useState<PendingTurn | null>(null);
   const [liveTextItems, setLiveTextItems] = React.useState<StaticItem[]>([]);
   const [keyCounter, setKeyCounter] = React.useState(0);
-  const [mode, setMode] = React.useState<Mode>("edit");
+  const [discardPrompt, setDiscardPrompt] = React.useState(false);
   const [expandedCodemodeIds, setExpandedCodemodeIds] = React.useState<Set<string>>(
     () => new Set(),
   );
@@ -96,10 +95,12 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
   const rows = stdout.rows ?? 24;
   const statusRows = 2;
   const bottomPaneMarginRows = 1;
-  const promptRows = !pending && approval === null ? 2 : 0;
+  const promptRows = !pending && approval === null && !discardPrompt ? 2 : 0;
   const liveTurnRows = pending ? 1 : 0;
   const approvalRows = approval ? 6 : 0;
-  const reservedRows = statusRows + bottomPaneMarginRows + promptRows + liveTurnRows + approvalRows;
+  const discardRows = discardPrompt ? 2 : 0;
+  const reservedRows =
+    statusRows + bottomPaneMarginRows + promptRows + liveTurnRows + approvalRows + discardRows;
   const transcriptHeight = Math.max(1, rows - reservedRows);
   const transcriptContent = useBoxMetrics(transcriptContentRef);
   const maxScrollLines = Math.max(0, transcriptContent.height - transcriptHeight);
@@ -115,8 +116,22 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
   });
   latestRef.current = { transcriptItems, transcriptHeight, maxScrollLines, transcriptOffset };
 
+  const hasDirtySession = (): boolean => {
+    const maybeAgent = agent as { session?: { dirty?: { isDirty?: () => boolean } } };
+    return maybeAgent.session?.dirty?.isDirty?.() === true;
+  };
+
   useInput((input, key) => {
-    if ((key.ctrl && input === "c") || input === "\u0003") exit();
+    if (discardPrompt) {
+      if (input.toLowerCase() === "y") exit();
+      if (input.toLowerCase() === "n" || key.escape || key.return) setDiscardPrompt(false);
+      return;
+    }
+    if ((key.ctrl && input === "c") || input === "\u0003") {
+      if (hasDirtySession()) setDiscardPrompt(true);
+      else exit();
+      return;
+    }
     if (key.ctrl && input === "o") {
       setExpandedCodemodeIds((prev) => {
         const codemodeIds = staticItems.flatMap((item) =>
@@ -193,12 +208,8 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
       ...prev,
       { kind: "user", key: `u-${keyCounter}`, userMessage: message },
     ]);
-    setPending({ key: keyCounter, message, mode });
+    setPending({ key: keyCounter, message });
     setKeyCounter((k) => k + 1);
-  };
-
-  const cycleMode = () => {
-    setMode((m) => nextMode(m));
   };
 
   const handleBlockFinalize = (block: Block, turnId: number) => {
@@ -254,11 +265,22 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
         ),
       ),
     ),
-    !pending && approval === null
+    !pending && approval === null && !discardPrompt
       ? React.createElement(
           Box,
           { key: "prompt", marginTop: 1 },
-          React.createElement(Prompt, { onSubmit: submit, mode, onCycleMode: cycleMode }),
+          React.createElement(Prompt, { onSubmit: submit }),
+        )
+      : null,
+    discardPrompt
+      ? React.createElement(
+          Box,
+          { key: "discard", marginTop: 1 },
+          React.createElement(
+            Text,
+            { color: "yellow" },
+            "There are staged sandbox filesystem changes that have not been applied to disk. Exit and discard them? [y/N]",
+          ),
         )
       : null,
     approval !== null
@@ -272,7 +294,6 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
             key: pending.key,
             agent,
             message: pending.message,
-            mode: pending.mode,
             onBlockFinalize: handleBlockFinalize,
             onTurnDone: handleTurnDone,
             onLiveTextChange: handleLiveTextChange,

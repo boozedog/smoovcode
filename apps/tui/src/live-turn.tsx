@@ -1,6 +1,5 @@
-import type { Mode } from "@smoovcode/agent";
-import { type Block } from "@smoovcode/ui-core";
-import { type AgentLike, useAgentSession } from "@smoovcode/ui-react";
+import { type Block, type TokenUsage } from "@smoovcode/ui-core";
+import { type AgentLike, useAgentSession, useTickFlush } from "@smoovcode/ui-react";
 import { Box, Text } from "ink";
 import React from "react";
 import {
@@ -15,8 +14,6 @@ import { Spinner } from "./spinner.tsx";
 interface LiveTurnProps {
   agent: AgentLike;
   message: string;
-  /** Operating mode for this turn — `edit` (default) or `plan`. */
-  mode?: Mode;
   /**
    * Called once per block as it transitions out of streaming/running into a
    * terminal state. App promotes the block into `<Static>` scrollback.
@@ -35,6 +32,38 @@ function visibleTextBlocks(blocks: Block[], displayed: ReadonlySet<string>): Blo
 
 function liveTextSignature(blocks: Block[], turnId: number): string {
   return `${turnId}:${blocks.map((b) => `${b.id}:${b.kind === "text" ? b.text : ""}`).join("|")}`;
+}
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return `${minutes}m ${seconds}s`;
+}
+
+function formatTokenCount(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(value);
+}
+
+interface WorkingStatsProps {
+  startedAt: number;
+  usage?: TokenUsage;
+}
+
+function WorkingStats({ startedAt, usage }: WorkingStatsProps): React.ReactElement {
+  const [now, setNow] = React.useState(() => Date.now());
+  useTickFlush(() => setNow(Date.now()), 250);
+
+  const details = [formatElapsed(now - startedAt)];
+  if (usage) {
+    details.push(`${formatTokenCount(usage.outputTokens)} out`);
+    details.push(`${formatTokenCount(usage.inputTokens)} in`);
+  }
+
+  return React.createElement(Text, { dimColor: true }, `working ${details.join(" · ")}`);
 }
 
 function isBlockFinal(b: Block): boolean {
@@ -82,17 +111,13 @@ async function ensureBlockHighlighted(b: Block): Promise<void> {
 export function LiveTurn({
   agent,
   message,
-  mode,
   onBlockFinalize,
   onTurnDone,
   onLiveTextChange,
   onError,
 }: LiveTurnProps): React.ReactElement | null {
-  const session = useAgentSession({
-    agent,
-    message,
-    ...(mode !== undefined ? { mode } : {}),
-  });
+  const startedAtRef = React.useRef(Date.now());
+  const session = useAgentSession({ agent, message });
   const live = session.conversation.live;
   const finalized = session.conversation.finalized.at(-1);
   const turn = live ?? finalized;
@@ -161,7 +186,7 @@ export function LiveTurn({
       React.createElement(
         Box,
         { marginLeft: 1 },
-        React.createElement(Text, { dimColor: true }, mode ? `working (${mode})` : "working"),
+        React.createElement(WorkingStats, { startedAt: startedAtRef.current, usage: turn?.usage }),
       ),
     ),
   );

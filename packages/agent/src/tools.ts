@@ -12,6 +12,7 @@ import {
   type HostExecResult,
   type HostSpawner,
 } from "./host-exec.ts";
+import { DirtyTrackingFs, type ToolSession } from "./tool-session.ts";
 
 const LANG_NAMES = ["JavaScript", "TypeScript", "Tsx", "Html", "Css"] as const;
 type LangName = (typeof LANG_NAMES)[number];
@@ -36,6 +37,8 @@ function formatMatch(file: string, node: SgNode): AstGrepMatch {
     },
   };
 }
+
+export type AgentTools = ReturnType<typeof createTools>;
 
 export interface CreateToolsOptions {
   /** Root directory exposed to the bash tool via OverlayFs. Defaults to process.cwd(). */
@@ -68,12 +71,8 @@ export interface CreateToolsOptions {
    * `child_process.spawn`); useful in tests to avoid touching the host.
    */
   hostSpawn?: HostSpawner;
-  /**
-   * Optional predicate run before validateArgvShape on every bash call.
-   * Returning false rejects the call with a descriptive error. Used by
-   * plan mode to enforce a read-only argv allowlist.
-   */
-  bashArgvGuard?: (argv: readonly string[]) => boolean;
+  /** Session-scoped overlay/dirty state. When omitted, a fresh session is created for this tool set. */
+  session?: ToolSession;
 }
 
 /**
@@ -147,7 +146,7 @@ function isInsidePath(child: string, parent: string): boolean {
 
 export function createTools(opts: CreateToolsOptions = {}) {
   const root = opts.cwd ?? process.cwd();
-  const overlay = new OverlayFs({ root });
+  const overlay = opts.session?.projectOverlay ?? new OverlayFs({ root });
   const rwfs = new ReadWriteFs({ root });
   const mountPoint = overlay.getMountPoint();
   const config: SmoovConfig = opts.config ?? loadSmoovConfig({ root });
@@ -160,20 +159,25 @@ export function createTools(opts: CreateToolsOptions = {}) {
     mountPoint,
     patterns: ignorePatterns,
   });
+  const sessionFs = opts.session
+    ? new DirtyTrackingFs(filteredOverlay, opts.session.dirty)
+    : filteredOverlay;
   const ignoreMatcher = new GitignoreFs({ inner: rwfs, patterns: ignorePatterns });
   const execTimeoutMs = opts.execTimeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
   const approveHost: HostApprover = opts.approveHost ?? (async () => false);
   const hostSpawn: HostSpawner = opts.hostSpawn ?? defaultHostSpawn;
-  const bashArgvGuard = opts.bashArgvGuard;
   const allowList = config.host.allow;
   const bashEnv = new Bash({
-    fs: filteredOverlay,
+    fs: sessionFs,
     cwd: mountPoint,
     executionLimits: SANDBOX_LIMITS,
   });
 
   // Reject absolute paths and any `..` traversal that escapes the root.
   function assertInsideRoot(relPath: string): void {
+    if (relPath.trim() === "") {
+      throw new Error("path must not be empty");
+    }
     if (isAbsolute(relPath)) {
       throw new Error(`path must be relative to the project root: ${relPath}`);
     }
@@ -202,24 +206,15 @@ export function createTools(opts: CreateToolsOptions = {}) {
     }
   }
 
-  // Atomic write to disk (temp file + rename), then mirror into the bash
-  // overlay so subsequent sandbox reads see the new content.
-  async function persistFile(relPath: string, content: string): Promise<void> {
+  function virtualPath(relPath: string): string {
+    return mountPoint.endsWith("/") ? `${mountPoint}${relPath}` : `${mountPoint}/${relPath}`;
+  }
+
+  async function stageFile(relPath: string, content: string): Promise<void> {
     assertInsideRoot(relPath);
     assertNotIgnored(relPath);
     assertNoSymlink(relPath);
-    const tmpPath = `${relPath}.smoov.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
-    await rwfs.writeFile(tmpPath, content);
-    try {
-      await rwfs.mv(tmpPath, relPath);
-    } catch (err) {
-      await rwfs.rm(tmpPath, { force: true }).catch(() => {});
-      throw err;
-    }
-    const virtualPath = mountPoint.endsWith("/")
-      ? `${mountPoint}${relPath}`
-      : `${mountPoint}/${relPath}`;
-    overlay.writeFileSync(virtualPath, content);
+    await sessionFs.writeFile(virtualPath(relPath), content);
   }
 
   return {
@@ -236,11 +231,6 @@ export function createTools(opts: CreateToolsOptions = {}) {
         stdin: z.string().optional().describe("Standard input to pass to the command."),
       }),
       execute: async ({ argv, stdin }) => {
-        if (bashArgvGuard && !bashArgvGuard(argv)) {
-          throw new Error(
-            `bash: command ${JSON.stringify(argv.join(" "))} is blocked by the active mode (plan mode allows read-only commands only: cat, ls, head, tail, grep, rg, fd, git log/diff/status/show, etc.).`,
-          );
-        }
         validateArgvShape(argv);
         const cmd = argv[0];
 
@@ -302,20 +292,20 @@ export function createTools(opts: CreateToolsOptions = {}) {
 
     write: tool({
       description:
-        "Create or overwrite a file at `path` (relative to the project root) with `content`. Atomic on disk (temp file + rename); root-bounded; symlinks blocked. The bash sandbox sees the new content on subsequent calls.",
+        "Stage a create-or-overwrite of `path` (relative to the project root) with `content`. This writes only to the session sandbox overlay; host disk is not modified until a future explicit apply action. Root-bounded; symlinks blocked. Subsequent sandbox reads see the staged content.",
       inputSchema: z.object({
         path: z.string().min(1).describe("Path relative to the project root."),
         content: z.string().describe("Full file content to write."),
       }),
       execute: async ({ path, content }) => {
-        await persistFile(path, content);
+        await stageFile(path, content);
         return { path, bytes: Buffer.byteLength(content, "utf8") };
       },
     }),
 
     edit: tool({
       description:
-        "Replace `oldString` with `newString` in the file at `path` (relative to the project root). By default `oldString` must occur exactly once; pass `replaceAll: true` to substitute every occurrence. Atomic on disk; root-bounded; symlinks blocked.",
+        "Stage a replacement of `oldString` with `newString` in `path` (relative to the project root). Reads from the session sandbox view, including prior staged changes. By default `oldString` must occur exactly once; pass `replaceAll: true` to substitute every occurrence. Host disk is not modified until a future explicit apply action; root-bounded; symlinks blocked.",
       inputSchema: z.object({
         path: z.string().min(1).describe("Path relative to the project root."),
         oldString: z.string().describe("Exact substring to find."),
@@ -331,14 +321,16 @@ export function createTools(opts: CreateToolsOptions = {}) {
         if (oldString === newString) {
           throw new Error("edit: oldString and newString are identical; nothing to do.");
         }
-        if (!(await rwfs.exists(path))) {
+        assertNotIgnored(path);
+        const vPath = virtualPath(path);
+        if (!(await sessionFs.exists(vPath))) {
           throw new Error(`edit: file not found: ${path}`);
         }
-        const stat = await rwfs.stat(path);
+        const stat = await sessionFs.stat(vPath);
         if (!stat.isFile) {
           throw new Error(`edit: not a regular file: ${path}`);
         }
-        const original = await rwfs.readFile(path);
+        const original = await sessionFs.readFile(vPath);
         const firstIdx = original.indexOf(oldString);
         if (firstIdx === -1) {
           throw new Error(`edit: oldString not found in ${path}`);
@@ -366,7 +358,7 @@ export function createTools(opts: CreateToolsOptions = {}) {
           replacements = 1;
         }
 
-        await persistFile(path, updated);
+        await stageFile(path, updated);
         return { path, replacements };
       },
     }),

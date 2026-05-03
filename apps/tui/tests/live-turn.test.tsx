@@ -76,6 +76,30 @@ describe("LiveTurn", () => {
     expect(lastFrame() ?? "").not.toBe(first);
   });
 
+  test("renders elapsed time and token counts next to the working label", async () => {
+    const never = new Promise<void>(() => {});
+    const agent: FakeAgent = {
+      async *run() {
+        yield { type: "usage", inputTokens: 1200, outputTokens: 34 };
+        await never;
+      },
+    };
+    const { lastFrame } = render(
+      React.createElement(LiveTurn, {
+        agent,
+        message: "ping",
+        onBlockFinalize: () => {},
+        onTurnDone: () => {},
+      }),
+    );
+    await flush();
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("working");
+    expect(frame).toContain("0s");
+    expect(frame).toContain("34 out");
+    expect(frame).toContain("1.2k in");
+  });
+
   test("does not render streaming text content live", async () => {
     const never = new Promise<void>(() => {});
     const agent: FakeAgent = {

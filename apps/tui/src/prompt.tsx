@@ -1,17 +1,11 @@
-import type { Mode } from "@smoovcode/agent";
 import { Box, Text, useInput } from "ink";
 import React from "react";
-import { ModeBadge } from "./mode-badge.tsx";
 
 const SGR_MOUSE_INPUT_RE = /^(?:\[?<\d+;\d+;\d+[mM])+$/;
 const MODIFIED_ENTER_INPUT_RE = /^\[(?:13;[23]u|27;[23];13~)$/;
 
 interface PromptProps {
   onSubmit: (message: string) => void;
-  /** Current operating mode; rendered as a badge inline with the prompt. */
-  mode: Mode;
-  /** Called when the user cycles modes via Shift+Tab. */
-  onCycleMode: () => void;
 }
 
 /**
@@ -29,7 +23,7 @@ interface PromptProps {
  * collapses back into the previous line. There is no in-line cursor
  * navigation by design (keep the implementation tight).
  */
-export function Prompt({ onSubmit, mode, onCycleMode }: PromptProps): React.ReactElement {
+export function Prompt({ onSubmit }: PromptProps): React.ReactElement {
   const [lines, setLines] = React.useState<string[]>([""]);
 
   useInput((input, key) => {
@@ -44,10 +38,6 @@ export function Prompt({ onSubmit, mode, onCycleMode }: PromptProps): React.Reac
         setLines([""]);
         onSubmit(text);
       }
-      return;
-    }
-    if (key.tab && key.shift) {
-      onCycleMode();
       return;
     }
     if (key.backspace || key.delete) {
@@ -96,9 +86,6 @@ export function Prompt({ onSubmit, mode, onCycleMode }: PromptProps): React.Reac
       React.createElement(
         Box,
         { key: idx },
-        idx === 0
-          ? React.createElement(Box, { marginRight: 1 }, React.createElement(ModeBadge, { mode }))
-          : null,
         React.createElement(
           Text,
           { color: idx === 0 ? "green" : "cyan" },

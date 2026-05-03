@@ -10,6 +10,7 @@ export {
   type ToolCallBlock,
   type ToolCallEntry,
   type ToolCallStatus,
+  type TokenUsage,
   type Turn,
 } from "./reduce-conversation.ts";
 export { ApprovalQueue } from "./approval-queue.ts";

@@ -143,6 +143,15 @@ describe("reduceConversation", () => {
     }
   });
 
+  test("usage events update live turn token counts", () => {
+    const s = reduce([
+      { type: "turn-start", userMessage: "hi" },
+      { type: "usage", inputTokens: 1234, outputTokens: 56 },
+    ]);
+
+    expect(s.live?.usage).toEqual({ inputTokens: 1234, outputTokens: 56 });
+  });
+
   test("turn-end finalizes all streaming/running blocks and the turn", () => {
     const s = reduce([
       { type: "turn-start", userMessage: "hi" },
