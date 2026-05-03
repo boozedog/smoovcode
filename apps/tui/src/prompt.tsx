@@ -94,7 +94,7 @@ export function Prompt({ onSubmit, mode, onCycleMode }: PromptProps): React.Reac
           { color: idx === 0 ? "green" : "cyan" },
           idx === 0 ? "> " : "... ",
         ),
-        React.createElement(Text, null, line),
+        React.createElement(Text, null, idx === lines.length - 1 ? `${line}█` : line),
       ),
     ),
   );
