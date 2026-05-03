@@ -18,6 +18,7 @@ import { BottomPane } from "./bottom-pane.tsx";
 import { LiveTurn } from "./live-turn.tsx";
 import type { SessionStats } from "./status-line.tsx";
 import { Prompt } from "./prompt.tsx";
+import { disableMouseTrackingSequence, enableMouseTrackingSequence } from "./terminal-mouse.ts";
 
 export interface AppProps {
   agent: AgentLike;
@@ -150,7 +151,7 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
 
   useMountEffect(() => {
     if (!stdin.isTTY || !stdout.isTTY || process.env.NODE_ENV === "test") return;
-    stdout.write("\u001B[?1000h\u001B[?1002h\u001B[?1006h");
+    stdout.write(enableMouseTrackingSequence());
 
     const onData = (chunk: Buffer | string) => {
       const mouseEvents = chunk.toString().matchAll(SGR_MOUSE_RE);
@@ -197,7 +198,7 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
     stdin.on("data", onData);
     return () => {
       stdin.off("data", onData);
-      stdout.write("\u001B[?1000l\u001B[?1002l\u001B[?1006l");
+      stdout.write(disableMouseTrackingSequence());
     };
   });
 
