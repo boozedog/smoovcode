@@ -1,7 +1,7 @@
 import { type HostApprovalRequest, type Mode, nextMode } from "@smoovcode/agent";
 import { type ApprovalQueue, type Block } from "@smoovcode/ui-core";
 import { type AgentLike, useApprovalQueue } from "@smoovcode/ui-react";
-import { Box, Static, Text } from "ink";
+import { Box, Static, Text, useApp, useInput } from "ink";
 import React from "react";
 import { ApprovalModal } from "./approval-modal.tsx";
 import { BlockView } from "./block-view.tsx";
@@ -33,6 +33,11 @@ export function App({ agent, approvalQueue, banner }: AppProps): React.ReactElem
   const [keyCounter, setKeyCounter] = React.useState(0);
   const [mode, setMode] = React.useState<Mode>("edit");
   const { pending: approval } = useApprovalQueue(approvalQueue);
+  const { exit } = useApp();
+
+  useInput((input, key) => {
+    if (key.ctrl && input === "c") exit();
+  });
 
   const submit = (message: string) => {
     setStaticItems((prev) => [
