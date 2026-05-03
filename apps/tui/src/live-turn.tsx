@@ -10,7 +10,6 @@ import {
   isWriteInput,
 } from "./block-view.tsx";
 import { ensureHighlighted } from "./highlight-cache.ts";
-import { Spinner } from "./spinner.tsx";
 
 interface LiveTurnProps {
   agent: AgentLike;
@@ -63,10 +62,10 @@ async function ensureBlockHighlighted(b: Block): Promise<void> {
 
 /**
  * Live region for one in-progress turn. Deliberately bounded to a fixed
- * number of lines so it can never exceed terminal height: a single "thinking"
- * spinner line plus one indented spinner-prefixed line per currently-running
+ * number of lines so it can never exceed terminal height: a single static
+ * "working" indicator plus one indented static indicator per currently-running
  * tool-call. Streaming text/reasoning are not rendered live — they emit to
- * `<Static>` once finalized via `onBlockFinalize`. (If you want to watch the
+ * scrollback once finalized via `onBlockFinalize`. (If you want to watch the
  * model think token-by-token, use the CLI.)
  */
 export function LiveTurn({
@@ -134,19 +133,19 @@ export function LiveTurn({
     { flexDirection: "column" },
     React.createElement(
       Box,
-      { key: "thinking" },
-      React.createElement(Spinner, null),
+      { key: "working" },
+      React.createElement(Text, { color: "cyan" }, "⠋"),
       React.createElement(
         Box,
         { marginLeft: 1 },
-        React.createElement(Text, { dimColor: true }, "thinking"),
+        React.createElement(Text, { dimColor: true }, "working"),
       ),
     ),
     ...runningToolCalls.map((b) =>
       React.createElement(
         Box,
         { key: b.id, marginLeft: 2 },
-        React.createElement(Spinner, null),
+        React.createElement(Text, { color: "cyan" }, "⠋"),
         React.createElement(Box, { marginLeft: 1 }, React.createElement(Text, null, `[${b.name}]`)),
       ),
     ),

@@ -6,16 +6,18 @@ import { Spinner } from "./spinner.tsx";
 
 interface BlockViewProps {
   block: Block;
+  /** Render completed codemode blocks expanded instead of as a compact summary. */
+  expandedCodemode?: boolean;
 }
 
-export function BlockView({ block }: BlockViewProps): React.ReactElement {
+export function BlockView({ block, expandedCodemode = false }: BlockViewProps): React.ReactElement {
   switch (block.kind) {
     case "text":
       return React.createElement(HighlightedCode, { code: block.text, lang: "md" });
     case "reasoning":
       return React.createElement(Text, { dimColor: true }, `thinking: ${block.text}`);
     case "tool-call":
-      return React.createElement(ToolCallView, { block });
+      return React.createElement(ToolCallView, { block, expandedCodemode });
     case "error":
       return React.createElement(Text, { color: "red" }, `[error] ${block.error}`);
   }
@@ -64,9 +66,19 @@ export function inferLangFromPath(path: string): Lang | null {
   return null;
 }
 
-function ToolCallView({ block }: { block: ToolCallBlock }): React.ReactElement {
+function ToolCallView({
+  block,
+  expandedCodemode,
+}: {
+  block: ToolCallBlock;
+  expandedCodemode: boolean;
+}): React.ReactElement {
   if (block.name === "codemode" && isCodemodeInput(block.input)) {
-    return React.createElement(CodemodeView, { block, input: block.input });
+    return React.createElement(CodemodeView, {
+      block,
+      input: block.input,
+      expanded: expandedCodemode,
+    });
   }
   if (block.name === "write" && isWriteInput(block.input)) {
     return React.createElement(WriteView, { block, input: block.input });
@@ -97,17 +109,41 @@ function ToolCallView({ block }: { block: ToolCallBlock }): React.ReactElement {
 function CodemodeView({
   block,
   input,
+  expanded,
 }: {
   block: ToolCallBlock;
   input: { code: string };
+  expanded: boolean;
 }): React.ReactElement {
+  const lineCount = input.code === "" ? 0 : input.code.split("\n").length;
+  const lineLabel = `${lineCount} line${lineCount === 1 ? "" : "s"}`;
+  const glyph = expanded || block.status === "running" ? "▼" : "▶";
+  const result = extractResult(block.output);
+  const resultSummary = block.status === "done" ? formatCollapsedResult(result) : "";
+  const statusSummary = block.status === "error" ? ` ✗ ${block.error}` : resultSummary;
+
+  if (!expanded && block.status !== "running") {
+    return React.createElement(
+      Text,
+      null,
+      React.createElement(Text, { color: "magenta" }, `${glyph} [${block.name}]`),
+      React.createElement(Text, { dimColor: true }, ` ${lineLabel} · Ctrl+O to expand`),
+      statusSummary,
+    );
+  }
+
   return React.createElement(
     Box,
     { flexDirection: "column" },
     React.createElement(
       Box,
       null,
-      React.createElement(Text, { color: "magenta" }, `[${block.name}]`),
+      React.createElement(Text, { color: "magenta" }, `${glyph} [${block.name}]`),
+      React.createElement(
+        Box,
+        { marginLeft: 1 },
+        React.createElement(Text, { dimColor: true }, `${lineLabel} · Ctrl+O to collapse`),
+      ),
       block.status === "running"
         ? React.createElement(Box, { marginLeft: 1 }, React.createElement(Spinner, null))
         : null,
@@ -207,6 +243,17 @@ function EditView({
       ? React.createElement(Text, { color: "red" }, `✗ ${block.error}`)
       : null,
   );
+}
+
+function formatCollapsedResult(result: unknown): string {
+  if (result === undefined) return " ✓ done";
+  if (typeof result === "string") return ` → string (${result.length} chars)`;
+  if (Array.isArray(result)) return ` → array (${result.length} items)`;
+  if (result && typeof result === "object") {
+    const keys = Object.keys(result);
+    return ` → object (${keys.length} key${keys.length === 1 ? "" : "s"})`;
+  }
+  return ` → ${JSON.stringify(result)}`;
 }
 
 function extractResult(o: unknown): unknown {

@@ -32,7 +32,7 @@ async function flush() {
 describe("LiveTurn", () => {
   const SPINNER_FRAME = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
 
-  test("renders a thinking spinner while the turn is in progress", () => {
+  test("renders a working spinner while the turn is in progress", () => {
     // Suspend the iterator forever — turn never reaches done.
     const never = new Promise<void>(() => {});
     const agent: FakeAgent = {
@@ -49,8 +49,29 @@ describe("LiveTurn", () => {
       }),
     );
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("thinking");
+    expect(frame).toContain("working");
+    expect(frame).not.toContain("thinking");
     expect(SPINNER_FRAME.test(frame)).toBe(true);
+  });
+
+  test("does not animate the working indicator, so terminal scrollback can stay put", async () => {
+    const never = new Promise<void>(() => {});
+    const agent: FakeAgent = {
+      async *run() {
+        await never;
+      },
+    };
+    const { lastFrame } = render(
+      React.createElement(LiveTurn, {
+        agent,
+        message: "hello",
+        onBlockFinalize: () => {},
+        onTurnDone: () => {},
+      }),
+    );
+    const first = lastFrame() ?? "";
+    await flush();
+    expect(lastFrame() ?? "").toBe(first);
   });
 
   test("does not render streaming text content live", async () => {
@@ -76,7 +97,8 @@ describe("LiveTurn", () => {
     await flush();
     const frame = lastFrame() ?? "";
     expect(frame).not.toContain("Hi, there!");
-    expect(frame).toContain("thinking");
+    expect(frame).toContain("working");
+    expect(frame).not.toContain("thinking");
   });
 
   test("renders one indented line per running tool-call, with the tool name", async () => {
@@ -175,8 +197,10 @@ describe("LiveTurn", () => {
     if (emitted === null) throw new Error("expected a block to be emitted");
     // Render the emitted block and read the *first* frame — no extra waits,
     // mirroring what <Static> does (one-shot render, no re-render).
-    const { lastFrame } = render(React.createElement(BlockView, { block: emitted }));
-    expect(lastFrame() ?? "").toMatch(/\x1b\[/);
+    const { lastFrame } = render(
+      React.createElement(BlockView, { block: emitted, expandedCodemode: true }),
+    );
+    expect(lastFrame() ?? "").toContain("\u001B[");
   });
 
   test("calls onError when the agent throws", async () => {

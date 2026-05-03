@@ -72,7 +72,7 @@ describe("BlockView", () => {
     expect(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(frame)).toBe(true);
   });
 
-  test("renders a codemode tool-call with the TS source highlighted", () => {
+  test("renders a completed codemode tool-call as a collapsed summary by default", () => {
     const block: Block = {
       kind: "tool-call",
       id: "b-0-0",
@@ -83,9 +83,59 @@ describe("BlockView", () => {
     };
     const { lastFrame } = render(React.createElement(BlockView, { block }));
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("[codemode]");
+    expect(frame).toContain("▶ [codemode]");
+    expect(frame).toContain("1 line");
+    expect(frame).toContain("→ object (1 key)");
+    expect(frame).not.toContain('{"ok":true}');
+    expect(frame).not.toContain('const x = "hello";');
+  });
+
+  test("renders an expanded codemode tool-call with the TS source highlighted", () => {
+    const block: Block = {
+      kind: "tool-call",
+      id: "b-0-0",
+      name: "codemode",
+      input: { code: 'const x = "hello";' },
+      status: "done",
+      output: { result: { ok: true } },
+    };
+    const { lastFrame } = render(React.createElement(BlockView, { block, expandedCodemode: true }));
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("▼ [codemode]");
     expect(frame).toContain('const x = "hello";');
     expect(frame).toContain('"ok"');
+  });
+
+  test("renders a completed codemode summary without an undefined result tail", () => {
+    const block: Block = {
+      kind: "tool-call",
+      id: "b-0-0",
+      name: "codemode",
+      input: { code: "await codemode.bash({ command: 'pwd' });" },
+      status: "done",
+      output: { result: undefined },
+    };
+    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("▶ [codemode]");
+    expect(frame).toContain("✓ done");
+    expect(frame).not.toContain("undefined");
+  });
+
+  test("renders a completed codemode summary without dumping large string output", () => {
+    const block: Block = {
+      kind: "tool-call",
+      id: "b-0-0",
+      name: "codemode",
+      input: { code: "return await codemode.bash({ command: 'ls -la' });" },
+      status: "done",
+      output: { result: { root: "total 18\nREADME.md\npackage.json" } },
+    };
+    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("→ object (1 key)");
+    expect(frame).not.toContain("README.md");
+    expect(frame).not.toContain("package.json");
   });
 
   test("renders a write block with the path header and the file contents", () => {

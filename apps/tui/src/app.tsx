@@ -1,7 +1,7 @@
 import { type HostApprovalRequest, type Mode, nextMode } from "@smoovcode/agent";
 import { type ApprovalQueue, type Block } from "@smoovcode/ui-core";
 import { type AgentLike, useApprovalQueue } from "@smoovcode/ui-react";
-import { Box, Static, Text, useApp, useInput } from "ink";
+import { Box, Text, useApp, useInput } from "ink";
 import React from "react";
 import { ApprovalModal } from "./approval-modal.tsx";
 import { BlockView } from "./block-view.tsx";
@@ -32,11 +32,13 @@ export function App({ agent, approvalQueue, banner }: AppProps): React.ReactElem
   const [pending, setPending] = React.useState<PendingTurn | null>(null);
   const [keyCounter, setKeyCounter] = React.useState(0);
   const [mode, setMode] = React.useState<Mode>("edit");
+  const [expandedCodemode, setExpandedCodemode] = React.useState(false);
   const { pending: approval } = useApprovalQueue(approvalQueue);
   const { exit } = useApp();
 
   useInput((input, key) => {
     if ((key.ctrl && input === "c") || input === "\u0003") exit();
+    if (key.ctrl && input === "o") setExpandedCodemode((expanded) => !expanded);
   });
 
   const submit = (message: string) => {
@@ -87,17 +89,14 @@ export function App({ agent, approvalQueue, banner }: AppProps): React.ReactElem
     return React.createElement(
       Box,
       { key: item.key },
-      React.createElement(BlockView, { block: item.block }),
+      React.createElement(BlockView, { block: item.block, expandedCodemode }),
     );
   };
 
   return React.createElement(
     Box,
     { flexDirection: "column" },
-    React.createElement(Static<StaticItem>, {
-      items: staticItems,
-      children: renderStaticItem,
-    }),
+    ...staticItems.map(renderStaticItem),
     pending
       ? React.createElement(
           Box,
