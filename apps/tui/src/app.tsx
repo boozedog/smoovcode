@@ -36,7 +36,7 @@ export function App({ agent, approvalQueue, banner }: AppProps): React.ReactElem
   const { exit } = useApp();
 
   useInput((input, key) => {
-    if (key.ctrl && input === "c") exit();
+    if ((key.ctrl && input === "c") || input === "\u0003") exit();
   });
 
   const submit = (message: string) => {

@@ -49,12 +49,28 @@ async function main() {
     },
   };
 
-  render(React.createElement(App, { agent: agentLike, approvalQueue, banner }), {
-    // Kitty keyboard protocol — required to distinguish Shift+Enter from
-    // plain Enter. Falls back transparently on terminals that don't support
-    // it (Shift+Enter behaves like Enter there).
-    kittyKeyboard: { mode: "auto" },
+  const renderOptions =
+    process.env.SMOOV_KITTY_KEYBOARD === "1"
+      ? {
+          // Opt-in: some terminals echo kitty negotiation/reset sequences like
+          // `^[[?0u` into the scrollback. Shift+Enter may behave like Enter
+          // when this is disabled, but Shift+Tab mode cycling still works in
+          // common terminals.
+          kittyKeyboard: { mode: "auto" as const },
+        }
+      : {};
+
+  const instance = render(React.createElement(App, { agent: agentLike, approvalQueue, banner }), {
+    exitOnCtrlC: true,
+    ...renderOptions,
   });
+
+  const onSigint = () => {
+    instance.unmount();
+    process.exit(130);
+  };
+  process.once("SIGINT", onSigint);
+  void instance.waitUntilExit().finally(() => process.off("SIGINT", onSigint));
 }
 
 main().catch((err) => {
