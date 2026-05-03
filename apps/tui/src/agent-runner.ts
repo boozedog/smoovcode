@@ -6,6 +6,13 @@ import {
   type ConversationState,
   type TokenUsage,
 } from "@smoovcode/ui-core";
+import { ensureHighlighted } from "./highlight-cache.ts";
+import {
+  formatCodemodeResult,
+  inferLangFromPath,
+  isCodemodeInput,
+  isWriteInput,
+} from "./render-block.ts";
 
 export interface AgentLike {
   run(
@@ -46,12 +53,12 @@ export class AgentRunner {
             inputTokens: event.inputTokens,
             outputTokens: event.outputTokens,
           });
-        this.emitFinalBlocks();
+        await this.emitFinalBlocks();
         this.emitLiveText();
         this.callbacks.onRender();
       }
       this.state = reduceConversation(this.state, { type: "turn-end" });
-      this.emitFinalBlocks();
+      await this.emitFinalBlocks();
       const finalized = this.state.finalized.at(-1);
       this.callbacks.onLiveTextChange([], finalized?.id ?? 0);
       this.callbacks.onDone(finalized?.id ?? 0);
@@ -63,12 +70,13 @@ export class AgentRunner {
     }
   }
 
-  private emitFinalBlocks(): void {
+  private async emitFinalBlocks(): Promise<void> {
     const turn = this.state.live ?? this.state.finalized.at(-1);
     if (!turn) return;
     for (const block of turn.blocks) {
       if (isBlockFinal(block) && !this.emitted.has(block.id)) {
         this.emitted.add(block.id);
+        await ensureBlockHighlighted(block);
         this.callbacks.onBlockFinalize(block, turn.id);
       }
     }
@@ -94,4 +102,25 @@ function isBlockFinal(block: Block): boolean {
     (block.kind === "tool-call" && block.status !== "running") ||
     block.kind === "error"
   );
+}
+
+async function ensureBlockHighlighted(block: Block): Promise<void> {
+  if (block.kind === "text") {
+    await ensureHighlighted(block.text, "md");
+    return;
+  }
+  if (block.kind !== "tool-call") return;
+
+  if (block.name === "codemode" && isCodemodeInput(block.input)) {
+    const tasks: Promise<unknown>[] = [ensureHighlighted(block.input.code, "ts")];
+    if (block.status === "done")
+      tasks.push(ensureHighlighted(formatCodemodeResult(block.output), "json"));
+    await Promise.all(tasks);
+    return;
+  }
+
+  if (block.name === "write" && isWriteInput(block.input)) {
+    const lang = inferLangFromPath(block.input.path);
+    if (lang) await ensureHighlighted(block.input.content, lang);
+  }
 }

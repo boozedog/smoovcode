@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
+import { ansi } from "./ansi.ts";
 
 export interface SessionStats {
   cwd?: string;
@@ -76,9 +77,13 @@ function formatModelLabel(stats: SessionStats): string {
 export function formatStatusLine(stats: SessionStats = {}): string {
   const project = formatProject(stats.cwd ?? process.cwd());
   const branch = stats.branch ?? readGitBranch(stats.cwd ?? process.cwd());
-  const detailParts = [`[${formatModelLabel(stats)}]`];
+  const detailParts = [ansi.cyan(`[${formatModelLabel(stats)}]`)];
   const revision = stats.revision ?? readGitRevision(stats.cwd ?? process.cwd());
-  if (revision) detailParts.push(revision);
-  if (stats.contextPercent !== undefined) detailParts.push(`${Math.round(stats.contextPercent)}%`);
-  return [`${project}${branch ? ` on ${branch}` : ""}`, detailParts.join(" ")].join("\n");
+  if (revision) detailParts.push(ansi.dim(` ${revision}`));
+  if (stats.contextPercent !== undefined)
+    detailParts.push(ansi.green(` ${Math.round(stats.contextPercent)}%`));
+  const projectLine = branch
+    ? `${ansi.blue(project)}${ansi.magenta(" on ")}${ansi.bold(ansi.magenta(branch))}`
+    : ansi.blue(project);
+  return [projectLine, detailParts.join("")].join("\n");
 }

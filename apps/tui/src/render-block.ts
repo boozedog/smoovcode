@@ -1,17 +1,19 @@
 import type { Block, ToolCallBlock } from "@smoovcode/ui-core";
+import { ansi } from "./ansi.ts";
+import { getHighlighted } from "./highlight-cache.ts";
 
 export type Lang = "ts" | "js" | "json" | "md" | "go";
 
 export function renderBlock(block: Block, opts: { expandedCodemode?: boolean } = {}): string[] {
   switch (block.kind) {
     case "text":
-      return block.text.split("\n");
+      return (getHighlighted(block.text, "md") ?? block.text).split("\n");
     case "reasoning":
-      return [`thinking: ${block.text}`];
+      return [ansi.dim(`thinking: ${block.text}`)];
     case "tool-call":
       return renderToolCall(block, opts.expandedCodemode === true);
     case "error":
-      return [`[error] ${block.error}`];
+      return [ansi.red(`[error] ${block.error}`)];
   }
 }
 
@@ -60,10 +62,11 @@ function renderToolCall(block: ToolCallBlock, expandedCodemode: boolean): string
   if (block.name === "write" && isWriteInput(block.input)) return renderWrite(block, block.input);
   if (block.name === "edit" && isEditInput(block.input)) return renderEdit(block, block.input);
 
-  const head = `[${block.name}] ${JSON.stringify(block.input)}`;
-  if (block.status === "running") return [`${head} ⠋`];
-  if (block.status === "done") return [`${head} → ${JSON.stringify(extractResult(block.output))}`];
-  return [`${head} ✗ ${block.error}`];
+  const head = `${ansi.magenta(`[${block.name}]`)} ${JSON.stringify(block.input)}`;
+  if (block.status === "running") return [`${head} ${ansi.cyan("⠋")}`];
+  if (block.status === "done")
+    return [`${head} ${ansi.dim(`→ ${JSON.stringify(extractResult(block.output))}`)}`];
+  return [`${head} ${ansi.red(`✗ ${block.error}`)}`];
 }
 
 function renderCodemode(
@@ -78,30 +81,36 @@ function renderCodemode(
   metadata.push(`${formatBytes(byteLength(input.code))} in`);
   if (block.status === "done") metadata.push(`${formatBytes(byteLength(block.output))} out`);
   const glyph = expanded || block.status === "running" ? "▼" : "▶";
-  const summary = `${glyph} [${block.name}] ${metadata.join(" · ")}`;
+  const summary = `${ansi.magenta(`${glyph} [${block.name}]`)} ${ansi.dim(metadata.join(" · "))}`;
   if (!expanded && block.status !== "running") {
     const tail =
       block.status === "error"
-        ? ` ✗ ${block.error}`
+        ? ` ${ansi.red(`✗ ${block.error}`)}`
         : extractResult(block.output) === undefined
           ? " ✓ done"
           : "";
     return [summary + tail];
   }
-  const lines = [summary, ...input.code.split("\n")];
-  if (block.status === "done") lines.push(...formatCodemodeResult(block.output).split("\n"));
-  if (block.status === "error") lines.push(`✗ ${block.error}`);
+  const highlightedCode = getHighlighted(input.code, "ts") ?? input.code;
+  const lines = [summary, ...highlightedCode.split("\n")];
+  if (block.status === "done") {
+    const result = formatCodemodeResult(block.output);
+    lines.push(...(getHighlighted(result, "json") ?? result).split("\n"));
+  }
+  if (block.status === "error") lines.push(ansi.red(`✗ ${block.error}`));
   return lines;
 }
 
 function renderWrite(block: ToolCallBlock, input: { path: string; content: string }): string[] {
+  const lang = inferLangFromPath(input.path);
+  const content = lang ? (getHighlighted(input.content, lang) ?? input.content) : input.content;
   const lines = [
-    `[${block.name}] ${input.path}${block.status === "running" ? " ⠋" : ""}`,
-    ...input.content.split("\n"),
+    `${ansi.magenta(`[${block.name}]`)} ${ansi.cyan(input.path)}${block.status === "running" ? ` ${ansi.cyan("⠋")}` : ""}`,
+    ...content.split("\n"),
   ];
   const bytes = extractBytes(block.output);
-  if (block.status === "done" && bytes !== null) lines.push(`→ wrote ${bytes} bytes`);
-  if (block.status === "error") lines.push(`✗ ${block.error}`);
+  if (block.status === "done" && bytes !== null) lines.push(ansi.dim(`→ wrote ${bytes} bytes`));
+  if (block.status === "error") lines.push(ansi.red(`✗ ${block.error}`));
   return lines;
 }
 
@@ -109,13 +118,15 @@ function renderEdit(
   block: ToolCallBlock,
   input: { path: string; oldString: string; newString: string },
 ): string[] {
-  const lines = [`[${block.name}] ${input.path}${block.status === "running" ? " ⠋" : ""}`];
-  lines.push(...input.oldString.split("\n").map((line) => `- ${line}`));
-  lines.push(...input.newString.split("\n").map((line) => `+ ${line}`));
+  const lines = [
+    `${ansi.magenta(`[${block.name}]`)} ${ansi.cyan(input.path)}${block.status === "running" ? ` ${ansi.cyan("⠋")}` : ""}`,
+  ];
+  lines.push(...input.oldString.split("\n").map((line) => ansi.red(`- ${line}`)));
+  lines.push(...input.newString.split("\n").map((line) => ansi.green(`+ ${line}`)));
   const replacements = extractReplacements(block.output);
   if (block.status === "done" && replacements !== null)
-    lines.push(`→ ${replacements} replacement${replacements === 1 ? "" : "s"}`);
-  if (block.status === "error") lines.push(`✗ ${block.error}`);
+    lines.push(ansi.dim(`→ ${replacements} replacement${replacements === 1 ? "" : "s"}`));
+  if (block.status === "error") lines.push(ansi.red(`✗ ${block.error}`));
   return lines;
 }
 

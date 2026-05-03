@@ -228,13 +228,8 @@ function wrapLines(
 
   lines.forEach((line, lineIdx) => {
     const start = wrapped.length;
-    if (line.length === 0) {
-      wrapped.push("");
-    } else {
-      for (let idx = 0; idx < line.length; idx += width) {
-        wrapped.push(line.slice(idx, idx + width));
-      }
-    }
+    const wrappedLine = wrapAnsiLine(line, width);
+    wrapped.push(...wrappedLine.lines);
 
     if (cursor && cursor.line === lineIdx) {
       wrappedCursor = {
@@ -245,4 +240,43 @@ function wrapLines(
   });
 
   return { lines: wrapped, ...(wrappedCursor ? { cursor: wrappedCursor } : {}) };
+}
+
+function wrapAnsiLine(line: string, width: number): { lines: string[] } {
+  if (line.length === 0) return { lines: [""] };
+
+  const lines: string[] = [];
+  let current = "";
+  let visible = 0;
+  for (let idx = 0; idx < line.length; ) {
+    if (line[idx] === "\u001b" && line[idx + 1] === "[") {
+      const end = findAnsiEnd(line, idx + 2);
+      if (end !== -1) {
+        current += line.slice(idx, end + 1);
+        idx = end + 1;
+        continue;
+      }
+    }
+
+    if (visible === width) {
+      lines.push(current);
+      current = "";
+      visible = 0;
+    }
+
+    current += line[idx];
+    visible += 1;
+    idx += 1;
+  }
+
+  lines.push(current);
+  return { lines };
+}
+
+function findAnsiEnd(line: string, start: number): number {
+  for (let idx = start; idx < line.length; idx += 1) {
+    const code = line.charCodeAt(idx);
+    if (code >= 0x40 && code <= 0x7e) return idx;
+  }
+  return -1;
 }

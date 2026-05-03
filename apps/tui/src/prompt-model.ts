@@ -6,14 +6,64 @@ export interface KeyInput {
   shift?: boolean;
 }
 
+const ESC = "\u001b";
 const MODIFIED_ENTER_INPUT_RE = /^\[(?:13;[23]u|27;[23];13~)$/;
+const CSI_U_RE = /^\[(\d+);(\d+)u$/;
+const XTERM_MODIFIED_KEY_RE = /^\[27;(\d+);(\d+)~$/;
+
+export function isModifiedEnterSequence(sequence: string): boolean {
+  const normalized = sequence.startsWith(ESC) ? sequence.slice(1) : sequence;
+  return MODIFIED_ENTER_INPUT_RE.test(normalized);
+}
+
+export function isEncodedKeySequence(sequence: string): boolean {
+  const normalized = sequence.startsWith(ESC) ? sequence.slice(1) : sequence;
+  return CSI_U_RE.test(normalized) || XTERM_MODIFIED_KEY_RE.test(normalized);
+}
 
 export function parseKey(sequence: string): KeyInput {
   if (sequence === "\r" || sequence === "\n") return { sequence, name: "enter" };
   if (sequence === "\u007f" || sequence === "\b") return { sequence, name: "backspace" };
   if (sequence === "\u0003") return { sequence, name: "c", ctrl: true };
-  if (MODIFIED_ENTER_INPUT_RE.test(sequence)) return { sequence, name: "enter", shift: true };
+  const encodedKey = parseEncodedKey(sequence);
+  if (encodedKey) return encodedKey;
+  if (isModifiedEnterSequence(sequence)) return { sequence, name: "enter", shift: true };
   return { sequence };
+}
+
+function parseEncodedKey(sequence: string): KeyInput | null {
+  const normalized = sequence.startsWith(ESC) ? sequence.slice(1) : sequence;
+  const csiUMatch = CSI_U_RE.exec(normalized);
+  const xtermMatch = XTERM_MODIFIED_KEY_RE.exec(normalized);
+  const modifierText = csiUMatch?.[2] ?? xtermMatch?.[1];
+  const codepointText = csiUMatch?.[1] ?? xtermMatch?.[2];
+  if (!modifierText || !codepointText) return null;
+
+  const codepoint = Number(codepointText);
+  const modifier = Number(modifierText);
+  if (!Number.isInteger(codepoint) || !Number.isInteger(modifier)) return null;
+
+  const char = String.fromCodePoint(codepoint);
+  const name = codepoint === 13 ? "enter" : char.toLowerCase();
+  return {
+    sequence,
+    name,
+    ...(modifierHasShift(modifier) ? { shift: true } : {}),
+    ...(modifierHasAlt(modifier) ? { meta: true } : {}),
+    ...(modifierHasCtrl(modifier) ? { ctrl: true } : {}),
+  };
+}
+
+function modifierHasShift(modifier: number): boolean {
+  return ((modifier - 1) & 1) !== 0;
+}
+
+function modifierHasAlt(modifier: number): boolean {
+  return ((modifier - 1) & 2) !== 0;
+}
+
+function modifierHasCtrl(modifier: number): boolean {
+  return ((modifier - 1) & 4) !== 0;
 }
 
 export class PromptModel {

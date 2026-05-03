@@ -2,9 +2,17 @@ import type { HostApprovalRequest } from "@smoovcode/agent";
 import type { ApprovalQueue } from "@smoovcode/ui-core";
 import { AgentRunner, type AgentLike } from "./agent-runner.ts";
 import { TuiAppModel } from "./app-model.ts";
-import { parseKey, type KeyInput } from "./prompt-model.ts";
+import {
+  isEncodedKeySequence,
+  isModifiedEnterSequence,
+  parseKey,
+  type KeyInput,
+} from "./prompt-model.ts";
 import { TerminalRenderer, type Terminal } from "./renderer.ts";
 import type { SessionStats } from "./status-line.ts";
+
+const KEYBOARD_PROTOCOL_ENABLE = "\u001b[>1u\u001b[>4;2m";
+const KEYBOARD_PROTOCOL_DISABLE = "\u001b[<1u\u001b[>4;0m";
 
 export interface TuiAppOptions {
   agent: AgentLike;
@@ -41,6 +49,7 @@ export class TuiApp {
     this.running = true;
     this.stdin.setEncoding("utf8");
     if (this.stdin.isTTY) this.stdin.setRawMode(true);
+    if (this.stdout.isTTY) this.stdout.write(KEYBOARD_PROTOCOL_ENABLE);
     this.stdin.resume();
     this.stdin.on("data", this.onData);
     this.unsubscribeApproval = this.opts.approvalQueue.subscribe(this.render);
@@ -54,6 +63,7 @@ export class TuiApp {
     if (this.stdin.isTTY) this.stdin.setRawMode(false);
     this.unsubscribeApproval?.();
     this.unsubscribeApproval = null;
+    if (this.stdout.isTTY) this.stdout.write(KEYBOARD_PROTOCOL_DISABLE);
     if (this.spinnerTimer) clearInterval(this.spinnerTimer);
     this.spinnerTimer = null;
   }
@@ -130,13 +140,21 @@ export class TuiApp {
   }
 }
 
-function parseInput(input: string): KeyInput[] {
+export function parseInput(input: string): KeyInput[] {
   const keys: KeyInput[] = [];
   for (let idx = 0; idx < input.length; idx += 1) {
     const char = input[idx];
     if (char === "\u001b") {
       const rest = input.slice(idx);
-      if (rest.startsWith("\u001b[A")) {
+      const encodedKey = readEncodedKey(rest);
+      const modifiedEnter = readModifiedEnter(rest);
+      if (encodedKey) {
+        keys.push(parseKey(encodedKey));
+        idx += encodedKey.length - 1;
+      } else if (modifiedEnter) {
+        keys.push(parseKey(modifiedEnter));
+        idx += modifiedEnter.length - 1;
+      } else if (rest.startsWith("\u001b[A")) {
         keys.push({ sequence: "\u001b[A", name: "up" });
         idx += 2;
       } else if (rest.startsWith("\u001b[B")) {
@@ -158,6 +176,21 @@ function parseInput(input: string): KeyInput[] {
     else keys.push(parseKey(char));
   }
   return keys;
+}
+
+function readEncodedKey(input: string): string | null {
+  const escape = String.fromCharCode(27);
+  const match = new RegExp(`^${escape}\\[(?:\\d+;\\d+u|27;\\d+;\\d+~)`).exec(input);
+  if (!match) return null;
+  const candidate = match[0];
+  return isEncodedKeySequence(candidate) ? candidate : null;
+}
+
+function readModifiedEnter(input: string): string | null {
+  for (const candidate of ["\u001b[13;2u", "\u001b[13;3u", "\u001b[27;2;13~", "\u001b[27;3;13~"]) {
+    if (input.startsWith(candidate) && isModifiedEnterSequence(candidate)) return candidate;
+  }
+  return null;
 }
 
 function toTerminal(stdout: NodeJS.WriteStream): Terminal {
