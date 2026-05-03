@@ -1,5 +1,5 @@
 import { render } from "ink-testing-library";
-import React from "react";
+import { createElement } from "react";
 import { describe, expect, test } from "vite-plus/test";
 import { HighlightedCode } from "../src/highlighted-code.tsx";
 
@@ -10,14 +10,14 @@ async function waitFrames(ms = 30) {
 describe("HighlightedCode", () => {
   test("renders the raw code on first frame (before async highlight resolves)", () => {
     const { lastFrame } = render(
-      React.createElement(HighlightedCode, { code: 'const x = "hi";', lang: "ts" }),
+      createElement(HighlightedCode, { code: 'const x = "hi";', lang: "ts" }),
     );
     expect(lastFrame()).toContain('const x = "hi";');
   });
 
   test("re-renders with ANSI escape sequences once syntax highlighting completes", async () => {
     const { lastFrame } = render(
-      React.createElement(HighlightedCode, {
+      createElement(HighlightedCode, {
         code: 'const x = "hi";\nconsole.log(x);',
         lang: "ts",
       }),
@@ -33,7 +33,7 @@ describe("HighlightedCode", () => {
 
   test("renders JSON when lang='json'", async () => {
     const code = JSON.stringify({ ok: true, n: 42 }, null, 2);
-    const { lastFrame } = render(React.createElement(HighlightedCode, { code, lang: "json" }));
+    const { lastFrame } = render(createElement(HighlightedCode, { code, lang: "json" }));
     await waitFrames();
     const frame = lastFrame() ?? "";
     expect(frame).toContain('"ok"');
@@ -43,7 +43,7 @@ describe("HighlightedCode", () => {
   test("falls back to raw text if highlighting throws (unknown language)", async () => {
     const { lastFrame } = render(
       // Cast — we deliberately pass an unsupported language to exercise the fallback.
-      React.createElement(HighlightedCode, {
+      createElement(HighlightedCode, {
         code: "anything goes here",
         lang: "klingon" as never,
       }),

@@ -1,9 +1,9 @@
-import React from "react";
+import { createElement, type ReactElement } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { useMountEffect } from "../src/use-mount-effect.ts";
 
-function render(element: React.ReactElement) {
+function render(element: ReactElement) {
   let renderer: TestRenderer.ReactTestRenderer;
   act(() => {
     renderer = TestRenderer.create(element);
@@ -18,7 +18,7 @@ describe("useMountEffect", () => {
       useMountEffect(effect);
       return null;
     };
-    render(React.createElement(Component));
+    render(createElement(Component));
     expect(effect).toHaveBeenCalledTimes(1);
   });
 
@@ -26,12 +26,12 @@ describe("useMountEffect", () => {
     const effect = vi.fn();
     const Component = ({ x }: { x: number }) => {
       useMountEffect(effect);
-      return React.createElement("text", null, String(x));
+      return createElement("text", null, String(x));
     };
-    const renderer = render(React.createElement(Component, { x: 0 }));
+    const renderer = render(createElement(Component, { x: 0 }));
     expect(effect).toHaveBeenCalledTimes(1);
     act(() => {
-      renderer.update(React.createElement(Component, { x: 1 }));
+      renderer.update(createElement(Component, { x: 1 }));
     });
     expect(effect).toHaveBeenCalledTimes(1);
   });
@@ -42,7 +42,7 @@ describe("useMountEffect", () => {
       useMountEffect(() => cleanup);
       return null;
     };
-    const renderer = render(React.createElement(Component));
+    const renderer = render(createElement(Component));
     expect(cleanup).not.toHaveBeenCalled();
     act(() => {
       renderer.unmount();
@@ -56,7 +56,7 @@ describe("useMountEffect", () => {
       useMountEffect(effect);
       return null;
     };
-    const wrapper = (k: string) => React.createElement(Component, { key: k });
+    const wrapper = (k: string) => createElement(Component, { key: k });
     const renderer = render(wrapper("a"));
     expect(effect).toHaveBeenCalledTimes(1);
     act(() => {

@@ -1,7 +1,7 @@
 import type { AgentEvent } from "@smoovcode/agent";
 import type { Block } from "@smoovcode/ui-core";
 import { render } from "ink-testing-library";
-import React from "react";
+import { createElement } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { BlockView } from "../src/block-view.tsx";
 import { LiveTurn } from "../src/live-turn.tsx";
@@ -42,7 +42,7 @@ describe("LiveTurn", () => {
       },
     };
     const { lastFrame } = render(
-      React.createElement(LiveTurn, {
+      createElement(LiveTurn, {
         agent,
         message: "hello",
         onBlockFinalize: () => {},
@@ -64,7 +64,7 @@ describe("LiveTurn", () => {
       },
     };
     const { lastFrame } = render(
-      React.createElement(LiveTurn, {
+      createElement(LiveTurn, {
         agent,
         message: "hello",
         onBlockFinalize: () => {},
@@ -85,7 +85,7 @@ describe("LiveTurn", () => {
       },
     };
     const { lastFrame } = render(
-      React.createElement(LiveTurn, {
+      createElement(LiveTurn, {
         agent,
         message: "ping",
         onBlockFinalize: () => {},
@@ -110,7 +110,7 @@ describe("LiveTurn", () => {
       },
     };
     const { lastFrame } = render(
-      React.createElement(LiveTurn, {
+      createElement(LiveTurn, {
         agent,
         message: "ping",
         onBlockFinalize: () => {},
@@ -134,7 +134,7 @@ describe("LiveTurn", () => {
       },
     };
     const { lastFrame } = render(
-      React.createElement(LiveTurn, {
+      createElement(LiveTurn, {
         agent,
         message: "go",
         onBlockFinalize: () => {},
@@ -158,7 +158,7 @@ describe("LiveTurn", () => {
     ]);
     const onBlockFinalize = vi.fn<(b: Block, turnId: number) => void>();
     render(
-      React.createElement(LiveTurn, {
+      createElement(LiveTurn, {
         agent,
         message: "go",
         onBlockFinalize,
@@ -179,7 +179,7 @@ describe("LiveTurn", () => {
     const agent = scriptedAgent([{ type: "text", delta: "done" }]);
     const onTurnDone = vi.fn<(turnId: number) => void>();
     render(
-      React.createElement(LiveTurn, {
+      createElement(LiveTurn, {
         agent,
         message: "go",
         onBlockFinalize: () => {},
@@ -194,7 +194,7 @@ describe("LiveTurn", () => {
   test("keeps the working row mounted until App removes the pending turn", async () => {
     const agent = scriptedAgent([{ type: "text", delta: "done" }]);
     const { lastFrame } = render(
-      React.createElement(LiveTurn, {
+      createElement(LiveTurn, {
         agent,
         message: "go",
         onBlockFinalize: () => {},
@@ -220,7 +220,7 @@ describe("LiveTurn", () => {
     ]);
     let emitted: Block | null = null;
     render(
-      React.createElement(LiveTurn, {
+      createElement(LiveTurn, {
         agent,
         message: "go",
         onBlockFinalize: (b: Block) => {
@@ -234,7 +234,7 @@ describe("LiveTurn", () => {
     // Render the emitted block and read the *first* frame — no extra waits,
     // mirroring what <Static> does (one-shot render, no re-render).
     const { lastFrame } = render(
-      React.createElement(BlockView, { block: emitted, expandedCodemode: true }),
+      createElement(BlockView, { block: emitted, expandedCodemode: true }),
     );
     expect(lastFrame() ?? "").toContain("\u001B[");
   });
@@ -248,7 +248,7 @@ describe("LiveTurn", () => {
     };
     const onError = vi.fn<(e: unknown) => void>();
     render(
-      React.createElement(LiveTurn, {
+      createElement(LiveTurn, {
         agent,
         message: "oops",
         onBlockFinalize: () => {},

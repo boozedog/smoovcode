@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { Box, Text } from "ink";
-import React from "react";
+import { createElement, type ReactElement } from "react";
 
 export interface SessionStats {
   cwd?: string;
@@ -85,29 +85,29 @@ export function formatStatusLine(stats: SessionStats = {}): string {
   return [`${project}${branch ? ` on ${branch}` : ""}`, detailParts.join(" ")].join("\n");
 }
 
-export function StatusLine({ stats = {} }: { stats?: SessionStats }): React.ReactElement {
+export function StatusLine({ stats = {} }: { stats?: SessionStats }): ReactElement {
   const project = formatProject(stats.cwd ?? process.cwd());
   const branch = stats.branch ?? readGitBranch(stats.cwd ?? process.cwd());
   const modelLabel = formatModelLabel(stats);
   const revision = stats.revision ?? readGitRevision(stats.cwd ?? process.cwd());
 
-  return React.createElement(
+  return createElement(
     Box,
     { flexDirection: "column", paddingX: 1 },
-    React.createElement(
+    createElement(
       Box,
       null,
-      React.createElement(Text, { color: "blue" }, project),
-      branch ? React.createElement(Text, { color: "magenta" }, ` on `) : null,
-      branch ? React.createElement(Text, { color: "magenta", bold: true }, branch) : null,
+      createElement(Text, { color: "blue" }, project),
+      branch ? createElement(Text, { color: "magenta" }, ` on `) : null,
+      branch ? createElement(Text, { color: "magenta", bold: true }, branch) : null,
     ),
-    React.createElement(
+    createElement(
       Box,
       null,
-      React.createElement(Text, { color: "cyan" }, `[${modelLabel}]`),
-      revision ? React.createElement(Text, { dimColor: true }, ` ${revision}`) : null,
+      createElement(Text, { color: "cyan" }, `[${modelLabel}]`),
+      revision ? createElement(Text, { dimColor: true }, ` ${revision}`) : null,
       stats.contextPercent !== undefined
-        ? React.createElement(Text, { color: "green" }, ` ${Math.round(stats.contextPercent)}%`)
+        ? createElement(Text, { color: "green" }, ` ${Math.round(stats.contextPercent)}%`)
         : null,
     ),
   );

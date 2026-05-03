@@ -1,6 +1,6 @@
 import type { Block } from "@smoovcode/ui-core";
 import { render } from "ink-testing-library";
-import React from "react";
+import { createElement } from "react";
 import { describe, expect, test } from "vite-plus/test";
 import { BlockView } from "../src/block-view.tsx";
 
@@ -12,7 +12,7 @@ describe("BlockView", () => {
       text: "# heading\nsome **bold** text",
       status: "done",
     };
-    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const { lastFrame } = render(createElement(BlockView, { block }));
     const frame = lastFrame() ?? "";
     expect(frame).toContain("heading");
     expect(frame).toContain("bold");
@@ -25,7 +25,7 @@ describe("BlockView", () => {
       text: "consider",
       status: "done",
     };
-    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const { lastFrame } = render(createElement(BlockView, { block }));
     expect(lastFrame()).toContain("thinking: consider");
   });
 
@@ -38,7 +38,7 @@ describe("BlockView", () => {
       status: "done",
       output: { result: "ok" },
     };
-    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const { lastFrame } = render(createElement(BlockView, { block }));
     const frame = lastFrame() ?? "";
     expect(frame).toContain('[echo] {"x":1}');
     expect(frame).toContain('→ "ok"');
@@ -53,7 +53,7 @@ describe("BlockView", () => {
       status: "error",
       error: "boom",
     };
-    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const { lastFrame } = render(createElement(BlockView, { block }));
     expect(lastFrame()).toContain("[t] {} ✗ boom");
   });
 
@@ -65,7 +65,7 @@ describe("BlockView", () => {
       input: { x: 1 },
       status: "running",
     };
-    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const { lastFrame } = render(createElement(BlockView, { block }));
     const frame = lastFrame() ?? "";
     expect(frame).toContain("[echo]");
     expect(frame).toContain("⠋");
@@ -82,7 +82,7 @@ describe("BlockView", () => {
       status: "done",
       output: { result: { ok: true }, metrics: { toolCalls: 3 } },
     };
-    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const { lastFrame } = render(createElement(BlockView, { block }));
     const frame = lastFrame() ?? "";
     expect(frame).toContain("▶ [codemode]");
     expect(frame).toContain("1 line");
@@ -103,7 +103,7 @@ describe("BlockView", () => {
       status: "done",
       output: { result: { ok: true } },
     };
-    const { lastFrame } = render(React.createElement(BlockView, { block, expandedCodemode: true }));
+    const { lastFrame } = render(createElement(BlockView, { block, expandedCodemode: true }));
     const frame = lastFrame() ?? "";
     expect(frame).toContain("▼ [codemode]");
     expect(frame).toContain('const x = "hello";');
@@ -119,7 +119,7 @@ describe("BlockView", () => {
       status: "done",
       output: { result: undefined },
     };
-    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const { lastFrame } = render(createElement(BlockView, { block }));
     const frame = lastFrame() ?? "";
     expect(frame).toContain("▶ [codemode]");
     expect(frame).toContain("✓ done");
@@ -135,7 +135,7 @@ describe("BlockView", () => {
       status: "done",
       output: { result: { root: "total 18\nREADME.md\npackage.json" } },
     };
-    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const { lastFrame } = render(createElement(BlockView, { block }));
     const frame = lastFrame() ?? "";
     expect(frame).toMatch(/\d+ B out/);
     expect(frame).not.toContain("README.md");
@@ -151,7 +151,7 @@ describe("BlockView", () => {
       status: "done",
       output: { path: "src/foo.ts", bytes: 23 },
     };
-    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const { lastFrame } = render(createElement(BlockView, { block }));
     const frame = lastFrame() ?? "";
     expect(frame).toContain("[write]");
     expect(frame).toContain("src/foo.ts");
@@ -168,7 +168,7 @@ describe("BlockView", () => {
       status: "done",
       output: { path: "src/foo.ts", replacements: 1 },
     };
-    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const { lastFrame } = render(createElement(BlockView, { block }));
     const frame = lastFrame() ?? "";
     expect(frame).toContain("[edit]");
     expect(frame).toContain("src/foo.ts");
@@ -190,7 +190,7 @@ describe("BlockView", () => {
       status: "done",
       output: { path: "src/foo.ts", replacements: 1 },
     };
-    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const { lastFrame } = render(createElement(BlockView, { block }));
     const frame = lastFrame() ?? "";
     expect(frame).toContain("- line1");
     expect(frame).toContain("- line2");
@@ -206,7 +206,7 @@ describe("BlockView", () => {
       error: "oops",
       status: "done",
     };
-    const { lastFrame } = render(React.createElement(BlockView, { block }));
+    const { lastFrame } = render(createElement(BlockView, { block }));
     expect(lastFrame()).toContain("[error] oops");
   });
 });

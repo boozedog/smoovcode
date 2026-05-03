@@ -9,8 +9,8 @@
         "paths": [
           {
             "name": "react",
-            "importNames": ["useEffect", "useLayoutEffect", "useInsertionEffect"],
-            "message": "useEffect/useLayoutEffect/useInsertionEffect are banned. Use useMountEffect from @smoovcode/ui-react. See CLAUDE.md > React rules."
+            "importNames": ["default", "*", "useEffect", "useLayoutEffect", "useInsertionEffect"],
+            "message": "React default/namespace imports and useEffect/useLayoutEffect/useInsertionEffect are banned. Import React APIs by name; use useMountEffect from @smoovcode/ui-react for mount-only effects. See CLAUDE.md > React rules."
           }
         ]
       }

@@ -1,5 +1,5 @@
 import { Text } from "ink";
-import React from "react";
+import { createElement, useRef, useState, type ReactElement } from "react";
 import { ensureHighlighted, getHighlighted } from "./highlight-cache.ts";
 
 /**
@@ -23,10 +23,10 @@ interface HighlightedCodeProps {
  * regions where re-renders are honored; `<Static>` items rely on the cache
  * being pre-warmed by `LiveTurn` before the block is emitted.
  */
-export function HighlightedCode({ code, lang }: HighlightedCodeProps): React.ReactElement {
+export function HighlightedCode({ code, lang }: HighlightedCodeProps): ReactElement {
   const cached = getHighlighted(code, lang);
-  const [rendered, setRendered] = React.useState(cached ?? code);
-  const lastInputRef = React.useRef<{ code: string; lang: Lang } | null>(null);
+  const [rendered, setRendered] = useState(cached ?? code);
+  const lastInputRef = useRef<{ code: string; lang: Lang } | null>(null);
 
   if (
     lastInputRef.current === null ||
@@ -51,5 +51,5 @@ export function HighlightedCode({ code, lang }: HighlightedCodeProps): React.Rea
     }
   }
 
-  return React.createElement(Text, null, rendered);
+  return createElement(Text, null, rendered);
 }

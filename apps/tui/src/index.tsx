@@ -12,7 +12,7 @@ import {
 } from "@smoovcode/agent";
 import { ApprovalQueue } from "@smoovcode/ui-core";
 import { render } from "ink";
-import React from "react";
+import { createElement } from "react";
 import { App } from "./app.tsx";
 
 function pickExecutor(name: string): Executor {
@@ -56,7 +56,7 @@ async function main() {
       : {};
 
   const instance = render(
-    React.createElement(App, {
+    createElement(App, {
       agent: agentLike,
       approvalQueue,
       banner,

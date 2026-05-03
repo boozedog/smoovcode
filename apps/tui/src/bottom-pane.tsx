@@ -1,17 +1,17 @@
 import { Box } from "ink";
-import React from "react";
+import { createElement, type ReactElement, type ReactNode } from "react";
 import { type SessionStats, StatusLine } from "./status-line.tsx";
 
 export interface BottomPaneProps {
-  children?: React.ReactNode;
+  children?: ReactNode;
   stats?: SessionStats;
 }
 
-export function BottomPane({ children, stats }: BottomPaneProps): React.ReactElement {
-  return React.createElement(
+export function BottomPane({ children, stats }: BottomPaneProps): ReactElement {
+  return createElement(
     Box,
     { flexDirection: "column", marginTop: 1 },
     children,
-    React.createElement(StatusLine, { stats }),
+    createElement(StatusLine, { stats }),
   );
 }

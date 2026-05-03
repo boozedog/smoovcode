@@ -1,4 +1,4 @@
-import React from "react";
+import { createElement } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { useTickFlush } from "../src/use-tick-flush.ts";
@@ -19,7 +19,7 @@ describe("useTickFlush", () => {
     };
     let renderer!: TestRenderer.ReactTestRenderer;
     act(() => {
-      renderer = TestRenderer.create(React.createElement(Component));
+      renderer = TestRenderer.create(createElement(Component));
     });
     expect(flush).not.toHaveBeenCalled();
     act(() => {
@@ -39,7 +39,7 @@ describe("useTickFlush", () => {
     };
     let renderer!: TestRenderer.ReactTestRenderer;
     act(() => {
-      renderer = TestRenderer.create(React.createElement(Component));
+      renderer = TestRenderer.create(createElement(Component));
     });
     act(() => {
       vi.advanceTimersByTime(100);
@@ -63,10 +63,10 @@ describe("useTickFlush", () => {
     };
     let renderer!: TestRenderer.ReactTestRenderer;
     act(() => {
-      renderer = TestRenderer.create(React.createElement(Component, { cb: a }));
+      renderer = TestRenderer.create(createElement(Component, { cb: a }));
     });
     act(() => {
-      renderer.update(React.createElement(Component, { cb: b }));
+      renderer.update(createElement(Component, { cb: b }));
     });
     act(() => {
       vi.advanceTimersByTime(100);

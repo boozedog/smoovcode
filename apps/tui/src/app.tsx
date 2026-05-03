@@ -11,7 +11,7 @@ import {
   useStdout,
   type DOMElement,
 } from "ink";
-import React from "react";
+import { createElement, useRef, useState, type ReactElement, type RefObject } from "react";
 import { ApprovalModal } from "./approval-modal.tsx";
 import { BlockView } from "./block-view.tsx";
 import { BottomPane } from "./bottom-pane.tsx";
@@ -47,48 +47,46 @@ function TranscriptItem({
 }: {
   item: StaticItem;
   expandedCodemode: boolean;
-  metricsRef: React.RefObject<Map<string, { top: number; height: number }>>;
-}): React.ReactElement {
-  const ref = React.useRef<DOMElement>(null) as React.RefObject<DOMElement>;
+  metricsRef: RefObject<Map<string, { top: number; height: number }>>;
+}): ReactElement {
+  const ref = useRef<DOMElement>(null) as RefObject<DOMElement>;
   const metrics = useBoxMetrics(ref);
   if (metrics.hasMeasured) {
     metricsRef.current.set(item.key, { top: metrics.top, height: metrics.height });
   }
 
   if (item.kind === "banner") {
-    return React.createElement(
+    return createElement(
       Box,
       { key: item.key, ref },
-      React.createElement(Text, { dimColor: true }, item.text),
+      createElement(Text, { dimColor: true }, item.text),
     );
   }
   if (item.kind === "user") {
-    return React.createElement(
+    return createElement(
       Box,
       { key: item.key, ref, marginTop: 1 },
-      React.createElement(Text, { color: "cyan" }, `> ${item.userMessage}`),
+      createElement(Text, { color: "cyan" }, `> ${item.userMessage}`),
     );
   }
-  return React.createElement(
+  return createElement(
     Box,
     { key: item.key, ref, marginTop: 1 },
-    React.createElement(BlockView, { block: item.block, expandedCodemode }),
+    createElement(BlockView, { block: item.block, expandedCodemode }),
   );
 }
 
-export function App({ agent, approvalQueue, banner, stats }: AppProps): React.ReactElement {
-  const [staticItems, setStaticItems] = React.useState<StaticItem[]>([
+export function App({ agent, approvalQueue, banner, stats }: AppProps): ReactElement {
+  const [staticItems, setStaticItems] = useState<StaticItem[]>([
     { kind: "banner", key: "banner", text: banner },
   ]);
-  const [pending, setPending] = React.useState<PendingTurn | null>(null);
-  const [liveTextItems, setLiveTextItems] = React.useState<StaticItem[]>([]);
-  const [keyCounter, setKeyCounter] = React.useState(0);
-  const [discardPrompt, setDiscardPrompt] = React.useState(false);
-  const [expandedCodemodeIds, setExpandedCodemodeIds] = React.useState<Set<string>>(
-    () => new Set(),
-  );
-  const [scrollbackLines, setScrollbackLines] = React.useState(0);
-  const transcriptContentRef = React.useRef<DOMElement>(null) as React.RefObject<DOMElement>;
+  const [pending, setPending] = useState<PendingTurn | null>(null);
+  const [liveTextItems, setLiveTextItems] = useState<StaticItem[]>([]);
+  const [keyCounter, setKeyCounter] = useState(0);
+  const [discardPrompt, setDiscardPrompt] = useState(false);
+  const [expandedCodemodeIds, setExpandedCodemodeIds] = useState<Set<string>>(() => new Set());
+  const [scrollbackLines, setScrollbackLines] = useState(0);
+  const transcriptContentRef = useRef<DOMElement>(null) as RefObject<DOMElement>;
   const { pending: approval } = useApprovalQueue(approvalQueue);
   const { exit } = useApp();
   const { stdin } = useStdin();
@@ -107,9 +105,9 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
   const maxScrollLines = Math.max(0, transcriptContent.height - transcriptHeight);
   const clampedScrollbackLines = Math.min(scrollbackLines, maxScrollLines);
   const transcriptOffset = -Math.max(0, maxScrollLines - clampedScrollbackLines);
-  const itemMetricsRef = React.useRef(new Map<string, { top: number; height: number }>());
+  const itemMetricsRef = useRef(new Map<string, { top: number; height: number }>());
   const transcriptItems = [...staticItems, ...liveTextItems];
-  const latestRef = React.useRef({
+  const latestRef = useRef({
     transcriptItems,
     transcriptHeight,
     maxScrollLines,
@@ -242,13 +240,13 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
     setPending(null);
   };
 
-  return React.createElement(
+  return createElement(
     Box,
     { flexDirection: "column", height: rows, overflow: "hidden" },
-    React.createElement(
+    createElement(
       Box,
       { flexDirection: "column", height: transcriptHeight, overflowY: "hidden" },
-      React.createElement(
+      createElement(
         Box,
         {
           ref: transcriptContentRef,
@@ -257,7 +255,7 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
           marginTop: transcriptOffset,
         },
         ...transcriptItems.map((item) =>
-          React.createElement(TranscriptItem, {
+          createElement(TranscriptItem, {
             key: item.key,
             item,
             expandedCodemode: expandedCodemodeIds.has(item.key),
@@ -267,17 +265,17 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
       ),
     ),
     !pending && approval === null && !discardPrompt
-      ? React.createElement(
+      ? createElement(
           Box,
           { key: "prompt", marginTop: 1 },
-          React.createElement(Prompt, { onSubmit: submit }),
+          createElement(Prompt, { onSubmit: submit }),
         )
       : null,
     discardPrompt
-      ? React.createElement(
+      ? createElement(
           Box,
           { key: "discard", marginTop: 1 },
-          React.createElement(
+          createElement(
             Text,
             { color: "yellow" },
             "There are staged sandbox filesystem changes that have not been applied to disk. Exit and discard them? [y/N]",
@@ -285,13 +283,13 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
         )
       : null,
     approval !== null
-      ? React.createElement(ApprovalModal, { key: "approval", queue: approvalQueue })
+      ? createElement(ApprovalModal, { key: "approval", queue: approvalQueue })
       : null,
-    React.createElement(
+    createElement(
       BottomPane,
       { stats },
       pending
-        ? React.createElement(LiveTurn, {
+        ? createElement(LiveTurn, {
             key: pending.key,
             agent,
             message: pending.message,

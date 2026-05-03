@@ -1,6 +1,6 @@
 import type { Block, ToolCallBlock } from "@smoovcode/ui-core";
 import { Box, Text } from "ink";
-import React from "react";
+import { createElement, type ReactElement } from "react";
 import { HighlightedCode, type Lang } from "./highlighted-code.tsx";
 
 interface BlockViewProps {
@@ -9,16 +9,16 @@ interface BlockViewProps {
   expandedCodemode?: boolean;
 }
 
-export function BlockView({ block, expandedCodemode = false }: BlockViewProps): React.ReactElement {
+export function BlockView({ block, expandedCodemode = false }: BlockViewProps): ReactElement {
   switch (block.kind) {
     case "text":
-      return React.createElement(HighlightedCode, { code: block.text, lang: "md" });
+      return createElement(HighlightedCode, { code: block.text, lang: "md" });
     case "reasoning":
-      return React.createElement(Text, { dimColor: true }, `thinking: ${block.text}`);
+      return createElement(Text, { dimColor: true }, `thinking: ${block.text}`);
     case "tool-call":
-      return React.createElement(ToolCallView, { block, expandedCodemode });
+      return createElement(ToolCallView, { block, expandedCodemode });
     case "error":
-      return React.createElement(Text, { color: "red" }, `[error] ${block.error}`);
+      return createElement(Text, { color: "red" }, `[error] ${block.error}`);
   }
 }
 
@@ -71,19 +71,19 @@ function ToolCallView({
 }: {
   block: ToolCallBlock;
   expandedCodemode: boolean;
-}): React.ReactElement {
+}): ReactElement {
   if (block.name === "codemode" && isCodemodeInput(block.input)) {
-    return React.createElement(CodemodeView, {
+    return createElement(CodemodeView, {
       block,
       input: block.input,
       expanded: expandedCodemode,
     });
   }
   if (block.name === "write" && isWriteInput(block.input)) {
-    return React.createElement(WriteView, { block, input: block.input });
+    return createElement(WriteView, { block, input: block.input });
   }
   if (block.name === "edit" && isEditInput(block.input)) {
-    return React.createElement(EditView, { block, input: block.input });
+    return createElement(EditView, { block, input: block.input });
   }
 
   // Default: single-line rendering. Transcript rendering must stay static; live
@@ -96,18 +96,14 @@ function ToolCallView({
     tail = ` ✗ ${block.error}`;
   }
   if (block.status === "running") {
-    return React.createElement(
+    return createElement(
       Box,
       null,
-      React.createElement(Text, null, head),
-      React.createElement(
-        Box,
-        { marginLeft: 1 },
-        React.createElement(Text, { color: "cyan" }, "⠋"),
-      ),
+      createElement(Text, null, head),
+      createElement(Box, { marginLeft: 1 }, createElement(Text, { color: "cyan" }, "⠋")),
     );
   }
-  return React.createElement(Text, null, head + tail);
+  return createElement(Text, null, head + tail);
 }
 
 function CodemodeView({
@@ -118,7 +114,7 @@ function CodemodeView({
   block: ToolCallBlock;
   input: { code: string };
   expanded: boolean;
-}): React.ReactElement {
+}): ReactElement {
   const lineCount = input.code === "" ? 0 : input.code.split("\n").length;
   const lineLabel = `${lineCount} line${lineCount === 1 ? "" : "s"}`;
   const glyph = expanded || block.status === "running" ? "▼" : "▶";
@@ -134,45 +130,39 @@ function CodemodeView({
   const statusSummary = block.status === "error" ? ` ✗ ${block.error}` : resultSummary;
 
   if (!expanded && block.status !== "running") {
-    return React.createElement(
+    return createElement(
       Text,
       null,
-      React.createElement(Text, { color: "magenta" }, `${glyph} [${block.name}]`),
-      React.createElement(Text, { dimColor: true }, ` ${metadata.join(" · ")}`),
+      createElement(Text, { color: "magenta" }, `${glyph} [${block.name}]`),
+      createElement(Text, { dimColor: true }, ` ${metadata.join(" · ")}`),
       statusSummary,
     );
   }
 
-  return React.createElement(
+  return createElement(
     Box,
     { flexDirection: "column" },
-    React.createElement(
+    createElement(
       Box,
       null,
-      React.createElement(Text, { color: "magenta" }, `${glyph} [${block.name}]`),
-      React.createElement(
+      createElement(Text, { color: "magenta" }, `${glyph} [${block.name}]`),
+      createElement(
         Box,
         { marginLeft: 1 },
-        React.createElement(Text, { dimColor: true }, metadata.join(" · ")),
+        createElement(Text, { dimColor: true }, metadata.join(" · ")),
       ),
       block.status === "running"
-        ? React.createElement(
-            Box,
-            { marginLeft: 1 },
-            React.createElement(Text, { color: "cyan" }, "⠋"),
-          )
+        ? createElement(Box, { marginLeft: 1 }, createElement(Text, { color: "cyan" }, "⠋"))
         : null,
     ),
-    React.createElement(HighlightedCode, { code: input.code, lang: "ts" }),
+    createElement(HighlightedCode, { code: input.code, lang: "ts" }),
     block.status === "done"
-      ? React.createElement(HighlightedCode, {
+      ? createElement(HighlightedCode, {
           code: formatCodemodeResult(block.output),
           lang: "json",
         })
       : null,
-    block.status === "error"
-      ? React.createElement(Text, { color: "red" }, `✗ ${block.error}`)
-      : null,
+    block.status === "error" ? createElement(Text, { color: "red" }, `✗ ${block.error}`) : null,
   );
 }
 
@@ -182,38 +172,28 @@ function WriteView({
 }: {
   block: ToolCallBlock;
   input: { path: string; content: string };
-}): React.ReactElement {
+}): ReactElement {
   const lang = inferLangFromPath(input.path);
   const bytes = extractBytes(block.output);
-  return React.createElement(
+  return createElement(
     Box,
     { flexDirection: "column" },
-    React.createElement(
+    createElement(
       Box,
       null,
-      React.createElement(Text, { color: "magenta" }, `[${block.name}]`),
-      React.createElement(
-        Box,
-        { marginLeft: 1 },
-        React.createElement(Text, { color: "cyan" }, input.path),
-      ),
+      createElement(Text, { color: "magenta" }, `[${block.name}]`),
+      createElement(Box, { marginLeft: 1 }, createElement(Text, { color: "cyan" }, input.path)),
       block.status === "running"
-        ? React.createElement(
-            Box,
-            { marginLeft: 1 },
-            React.createElement(Text, { color: "cyan" }, "⠋"),
-          )
+        ? createElement(Box, { marginLeft: 1 }, createElement(Text, { color: "cyan" }, "⠋"))
         : null,
     ),
     lang
-      ? React.createElement(HighlightedCode, { code: input.content, lang })
-      : React.createElement(Text, null, input.content),
+      ? createElement(HighlightedCode, { code: input.content, lang })
+      : createElement(Text, null, input.content),
     block.status === "done" && bytes !== null
-      ? React.createElement(Text, { dimColor: true }, `→ wrote ${bytes} bytes`)
+      ? createElement(Text, { dimColor: true }, `→ wrote ${bytes} bytes`)
       : null,
-    block.status === "error"
-      ? React.createElement(Text, { color: "red" }, `✗ ${block.error}`)
-      : null,
+    block.status === "error" ? createElement(Text, { color: "red" }, `✗ ${block.error}`) : null,
   );
 }
 
@@ -223,7 +203,7 @@ function EditView({
 }: {
   block: ToolCallBlock;
   input: { path: string; oldString: string; newString: string };
-}): React.ReactElement {
+}): ReactElement {
   const oldDiff = input.oldString
     .split("\n")
     .map((l) => `- ${l}`)
@@ -233,38 +213,28 @@ function EditView({
     .map((l) => `+ ${l}`)
     .join("\n");
   const replacements = extractReplacements(block.output);
-  return React.createElement(
+  return createElement(
     Box,
     { flexDirection: "column" },
-    React.createElement(
+    createElement(
       Box,
       null,
-      React.createElement(Text, { color: "magenta" }, `[${block.name}]`),
-      React.createElement(
-        Box,
-        { marginLeft: 1 },
-        React.createElement(Text, { color: "cyan" }, input.path),
-      ),
+      createElement(Text, { color: "magenta" }, `[${block.name}]`),
+      createElement(Box, { marginLeft: 1 }, createElement(Text, { color: "cyan" }, input.path)),
       block.status === "running"
-        ? React.createElement(
-            Box,
-            { marginLeft: 1 },
-            React.createElement(Text, { color: "cyan" }, "⠋"),
-          )
+        ? createElement(Box, { marginLeft: 1 }, createElement(Text, { color: "cyan" }, "⠋"))
         : null,
     ),
-    React.createElement(Text, { color: "red" }, oldDiff),
-    React.createElement(Text, { color: "green" }, newDiff),
+    createElement(Text, { color: "red" }, oldDiff),
+    createElement(Text, { color: "green" }, newDiff),
     block.status === "done" && replacements !== null
-      ? React.createElement(
+      ? createElement(
           Text,
           { dimColor: true },
           `→ ${replacements} replacement${replacements === 1 ? "" : "s"}`,
         )
       : null,
-    block.status === "error"
-      ? React.createElement(Text, { color: "red" }, `✗ ${block.error}`)
-      : null,
+    block.status === "error" ? createElement(Text, { color: "red" }, `✗ ${block.error}`) : null,
   );
 }
 

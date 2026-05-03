@@ -1,5 +1,5 @@
 import { Box, Text, useInput } from "ink";
-import React from "react";
+import { createElement, useState, type ReactElement } from "react";
 
 const SGR_MOUSE_INPUT_RE = /^(?:\[?<\d+;\d+;\d+[mM])+$/;
 const MODIFIED_ENTER_INPUT_RE = /^\[(?:13;[23]u|27;[23];13~)$/;
@@ -23,8 +23,8 @@ interface PromptProps {
  * collapses back into the previous line. There is no in-line cursor
  * navigation by design (keep the implementation tight).
  */
-export function Prompt({ onSubmit }: PromptProps): React.ReactElement {
-  const [lines, setLines] = React.useState<string[]>([""]);
+export function Prompt({ onSubmit }: PromptProps): ReactElement {
+  const [lines, setLines] = useState<string[]>([""]);
 
   useInput((input, key) => {
     if (key.return) {
@@ -79,19 +79,15 @@ export function Prompt({ onSubmit }: PromptProps): React.ReactElement {
       });
   });
 
-  return React.createElement(
+  return createElement(
     Box,
     { flexDirection: "column" },
     ...lines.map((line, idx) =>
-      React.createElement(
+      createElement(
         Box,
         { key: idx },
-        React.createElement(
-          Text,
-          { color: idx === 0 ? "green" : "cyan" },
-          idx === 0 ? "> " : "... ",
-        ),
-        React.createElement(Text, null, idx === lines.length - 1 ? `${line}█` : line),
+        createElement(Text, { color: idx === 0 ? "green" : "cyan" }, idx === 0 ? "> " : "... "),
+        createElement(Text, null, idx === lines.length - 1 ? `${line}█` : line),
       ),
     ),
   );

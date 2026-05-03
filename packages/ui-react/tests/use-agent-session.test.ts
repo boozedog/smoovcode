@@ -1,5 +1,5 @@
 import type { AgentEvent } from "@smoovcode/agent";
-import React from "react";
+import { createElement } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { useAgentSession } from "../src/use-agent-session.ts";
@@ -38,7 +38,7 @@ function harnessHook<T>(useHook: () => T): {
   };
   let renderer!: TestRenderer.ReactTestRenderer;
   act(() => {
-    renderer = TestRenderer.create(React.createElement(Probe));
+    renderer = TestRenderer.create(createElement(Probe));
   });
   return { renderer, captured };
 }

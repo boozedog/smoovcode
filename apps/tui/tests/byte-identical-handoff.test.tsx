@@ -1,7 +1,7 @@
 import type { Block } from "@smoovcode/ui-core";
 import { Box, Static, Text } from "ink";
 import { render } from "ink-testing-library";
-import React from "react";
+import { createElement, type ReactNode } from "react";
 import { describe, expect, test } from "vite-plus/test";
 import { BlockView } from "../src/block-view.tsx";
 
@@ -19,21 +19,21 @@ describe("byte-identical handoff", () => {
   test("a BlockView inside <Static> renders identical bytes to a BlockView in the live region", () => {
     const block = textBlock("Hello, world!");
 
-    const live = render(React.createElement(BlockView, { block }));
+    const live = render(createElement(BlockView, { block }));
 
     const items = [{ key: "b-0-0", block }];
     const finalized = render(
-      React.createElement(
+      createElement(
         Box,
         { flexDirection: "column" },
-        React.createElement(Static, {
+        createElement(Static, {
           items,
           children: ((item: { key: string; block: Block }) =>
-            React.createElement(
+            createElement(
               Box,
               { key: item.key },
-              React.createElement(BlockView, { block: item.block }),
-            )) as (item: unknown, index: number) => React.ReactNode,
+              createElement(BlockView, { block: item.block }),
+            )) as (item: unknown, index: number) => ReactNode,
         }),
       ),
     );
@@ -42,11 +42,11 @@ describe("byte-identical handoff", () => {
   });
 
   test("rendered block bytes are stable across renders (no time-dependent rendering for done text)", () => {
-    const a = render(React.createElement(BlockView, { block: textBlock("Hello") }));
+    const a = render(createElement(BlockView, { block: textBlock("Hello") }));
     const frameA = a.lastFrame();
     a.unmount();
 
-    const b = render(React.createElement(BlockView, { block: textBlock("Hello") }));
+    const b = render(createElement(BlockView, { block: textBlock("Hello") }));
     expect(b.lastFrame()).toBe(frameA);
   });
 
@@ -60,21 +60,21 @@ describe("byte-identical handoff", () => {
       { kind: "block", key: "b-0-0", block },
     ];
     const out = render(
-      React.createElement(Static, {
+      createElement(Static, {
         items,
         children: ((item: Item) =>
           item.kind === "banner"
-            ? React.createElement(Text, { key: item.key, dimColor: true }, item.text)
-            : React.createElement(
+            ? createElement(Text, { key: item.key, dimColor: true }, item.text)
+            : createElement(
                 Box,
                 { key: item.key },
-                React.createElement(BlockView, { block: item.block }),
-              )) as (item: unknown, index: number) => React.ReactNode,
+                createElement(BlockView, { block: item.block }),
+              )) as (item: unknown, index: number) => ReactNode,
       }),
     );
 
     const frame = out.lastFrame() ?? "";
-    const liveOnly = render(React.createElement(BlockView, { block })).lastFrame() ?? "";
+    const liveOnly = render(createElement(BlockView, { block })).lastFrame() ?? "";
     expect(frame.includes(liveOnly)).toBe(true);
   });
 });

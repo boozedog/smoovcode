@@ -1,7 +1,7 @@
 import type { HostApprovalRequest } from "@smoovcode/agent";
 import { ApprovalQueue } from "@smoovcode/ui-core";
 import { render } from "ink-testing-library";
-import React from "react";
+import { createElement } from "react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { App } from "../src/app.tsx";
 
@@ -36,7 +36,7 @@ describe("App", () => {
       },
     };
     const { lastFrame } = render(
-      React.createElement(App, {
+      createElement(App, {
         agent,
         approvalQueue: new ApprovalQueue<HostApprovalRequest>(),
         banner: "banner",
@@ -59,7 +59,7 @@ describe("App", () => {
       },
     };
     const { lastFrame, stdin } = render(
-      React.createElement(App, {
+      createElement(App, {
         agent,
         approvalQueue: new ApprovalQueue<HostApprovalRequest>(),
         banner: "banner",
@@ -85,7 +85,7 @@ describe("App", () => {
       },
     };
     const { lastFrame, stdin } = render(
-      React.createElement(App, {
+      createElement(App, {
         agent,
         approvalQueue: new ApprovalQueue<HostApprovalRequest>(),
         banner: "banner",
@@ -109,7 +109,7 @@ describe("App", () => {
       },
     };
     const { stdin } = render(
-      React.createElement(App, {
+      createElement(App, {
         agent,
         approvalQueue: new ApprovalQueue<HostApprovalRequest>(),
         banner: "banner",
@@ -129,7 +129,7 @@ describe("App", () => {
       },
     };
     const { lastFrame, stdin } = render(
-      React.createElement(App, {
+      createElement(App, {
         agent,
         approvalQueue: new ApprovalQueue<HostApprovalRequest>(),
         banner: "banner",

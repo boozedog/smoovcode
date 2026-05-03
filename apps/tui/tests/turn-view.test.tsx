@@ -1,6 +1,6 @@
 import type { Block, Turn } from "@smoovcode/ui-core";
 import { render } from "ink-testing-library";
-import React from "react";
+import { createElement } from "react";
 import { describe, expect, test } from "vite-plus/test";
 import { TurnView } from "../src/turn-view.tsx";
 
@@ -15,7 +15,7 @@ function makeTurn(blocks: Block[] = []): Turn {
 
 describe("TurnView", () => {
   test("renders the user prompt prefixed with `> `", () => {
-    const { lastFrame } = render(React.createElement(TurnView, { turn: makeTurn() }));
+    const { lastFrame } = render(createElement(TurnView, { turn: makeTurn() }));
     expect(lastFrame()).toContain("> hello");
   });
 
@@ -24,7 +24,7 @@ describe("TurnView", () => {
       { kind: "text", id: "b-0-0", text: "answer one", status: "done" },
       { kind: "text", id: "b-0-1", text: "answer two", status: "streaming" },
     ]);
-    const { lastFrame } = render(React.createElement(TurnView, { turn }));
+    const { lastFrame } = render(createElement(TurnView, { turn }));
     const frame = lastFrame() ?? "";
     const i1 = frame.indexOf("answer one");
     const i2 = frame.indexOf("answer two");
@@ -33,7 +33,7 @@ describe("TurnView", () => {
   });
 
   test("renders an empty turn as just the user prompt", () => {
-    const { lastFrame } = render(React.createElement(TurnView, { turn: makeTurn() }));
+    const { lastFrame } = render(createElement(TurnView, { turn: makeTurn() }));
     const frame = lastFrame() ?? "";
     expect(frame).toContain("> hello");
     expect(frame).not.toContain("[error]");

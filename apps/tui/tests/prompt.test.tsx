@@ -1,5 +1,5 @@
 import { render } from "ink-testing-library";
-import React from "react";
+import { createElement } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { Prompt } from "../src/prompt.tsx";
 
@@ -10,7 +10,7 @@ async function flush() {
 describe("Prompt", () => {
   test("renders a visible block cursor when the input is empty", () => {
     const { lastFrame } = render(
-      React.createElement(Prompt, {
+      createElement(Prompt, {
         onSubmit: () => {},
       }),
     );
@@ -19,7 +19,7 @@ describe("Prompt", () => {
 
   test("renders the cursor after typed text", async () => {
     const { lastFrame, stdin } = render(
-      React.createElement(Prompt, {
+      createElement(Prompt, {
         onSubmit: () => {},
       }),
     );
@@ -30,7 +30,7 @@ describe("Prompt", () => {
 
   test("ignores SGR mouse reports instead of inserting them into the prompt", async () => {
     const { lastFrame, stdin } = render(
-      React.createElement(Prompt, {
+      createElement(Prompt, {
         onSubmit: () => {},
       }),
     );
@@ -44,7 +44,7 @@ describe("Prompt", () => {
 
   test("moves the cursor to the newest line after Shift+Enter", async () => {
     const { lastFrame, stdin } = render(
-      React.createElement(Prompt, {
+      createElement(Prompt, {
         onSubmit: () => {},
       }),
     );
@@ -59,7 +59,7 @@ describe("Prompt", () => {
 
   test("handles legacy Shift+Enter reports without inserting escape text", async () => {
     const { lastFrame, stdin } = render(
-      React.createElement(Prompt, {
+      createElement(Prompt, {
         onSubmit: () => {},
       }),
     );
@@ -75,7 +75,7 @@ describe("Prompt", () => {
 
   test("does not render a mode badge", () => {
     const { lastFrame } = render(
-      React.createElement(Prompt, {
+      createElement(Prompt, {
         onSubmit: () => {},
       }),
     );
@@ -88,7 +88,7 @@ describe("Prompt", () => {
   test("Enter without text does not submit", () => {
     const onSubmit = vi.fn();
     const { stdin } = render(
-      React.createElement(Prompt, {
+      createElement(Prompt, {
         onSubmit,
       }),
     );

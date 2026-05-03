@@ -1,7 +1,7 @@
 import { type Block, type TokenUsage } from "@smoovcode/ui-core";
 import { type AgentLike, useAgentSession, useTickFlush } from "@smoovcode/ui-react";
 import { Box, Text } from "ink";
-import React from "react";
+import { createElement, useRef, useState, type ReactElement } from "react";
 import {
   formatCodemodeResult,
   inferLangFromPath,
@@ -53,8 +53,8 @@ interface WorkingStatsProps {
   usage?: TokenUsage;
 }
 
-function WorkingStats({ startedAt, usage }: WorkingStatsProps): React.ReactElement {
-  const [now, setNow] = React.useState(() => Date.now());
+function WorkingStats({ startedAt, usage }: WorkingStatsProps): ReactElement {
+  const [now, setNow] = useState(() => Date.now());
   useTickFlush(() => setNow(Date.now()), 250);
 
   const details = [formatElapsed(now - startedAt)];
@@ -63,7 +63,7 @@ function WorkingStats({ startedAt, usage }: WorkingStatsProps): React.ReactEleme
     details.push(`${formatTokenCount(usage.inputTokens)} in`);
   }
 
-  return React.createElement(Text, { dimColor: true }, `working ${details.join(" · ")}`);
+  return createElement(Text, { dimColor: true }, `working ${details.join(" · ")}`);
 }
 
 function isBlockFinal(b: Block): boolean {
@@ -115,20 +115,20 @@ export function LiveTurn({
   onTurnDone,
   onLiveTextChange,
   onError,
-}: LiveTurnProps): React.ReactElement | null {
-  const startedAtRef = React.useRef(Date.now());
+}: LiveTurnProps): ReactElement | null {
+  const startedAtRef = useRef(Date.now());
   const session = useAgentSession({ agent, message });
   const live = session.conversation.live;
   const finalized = session.conversation.finalized.at(-1);
   const turn = live ?? finalized;
 
-  const emittedRef = React.useRef<Set<string>>(new Set());
-  const displayedRef = React.useRef<Set<string>>(new Set());
-  const turnDoneRef = React.useRef(false);
+  const emittedRef = useRef<Set<string>>(new Set());
+  const displayedRef = useRef<Set<string>>(new Set());
+  const turnDoneRef = useRef(false);
   // Serialize emits so blocks reach `<Static>` in turn order even when their
   // pre-warm awaits resolve at different times.
-  const emitChainRef = React.useRef<Promise<void>>(Promise.resolve());
-  const liveTextSignatureRef = React.useRef<string>("");
+  const emitChainRef = useRef<Promise<void>>(Promise.resolve());
+  const liveTextSignatureRef = useRef<string>("");
 
   if (turn) {
     const liveText = visibleTextBlocks(turn.blocks, displayedRef.current);
@@ -176,17 +176,17 @@ export function LiveTurn({
     });
   }
 
-  return React.createElement(
+  return createElement(
     Box,
     { flexDirection: "column" },
-    React.createElement(
+    createElement(
       Box,
       { key: "working" },
-      React.createElement(Spinner, null),
-      React.createElement(
+      createElement(Spinner, null),
+      createElement(
         Box,
         { marginLeft: 1 },
-        React.createElement(WorkingStats, { startedAt: startedAtRef.current, usage: turn?.usage }),
+        createElement(WorkingStats, { startedAt: startedAtRef.current, usage: turn?.usage }),
       ),
     ),
   );

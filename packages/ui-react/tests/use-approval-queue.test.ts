@@ -1,5 +1,5 @@
 import { ApprovalQueue } from "@smoovcode/ui-core";
-import React from "react";
+import { createElement } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { useApprovalQueue } from "../src/use-approval-queue.ts";
@@ -21,7 +21,7 @@ function harness<T>(queue: ApprovalQueue<T>): {
   };
   let renderer!: TestRenderer.ReactTestRenderer;
   act(() => {
-    renderer = TestRenderer.create(React.createElement(Probe));
+    renderer = TestRenderer.create(createElement(Probe));
   });
   return {
     renderer,

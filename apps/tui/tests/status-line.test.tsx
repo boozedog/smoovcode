@@ -1,5 +1,5 @@
 import { render } from "ink-testing-library";
-import React from "react";
+import { createElement } from "react";
 import { describe, expect, test } from "vite-plus/test";
 import { formatStatusLine, StatusLine } from "../src/status-line.tsx";
 
@@ -19,7 +19,7 @@ describe("StatusLine", () => {
 
   test("renders even when usage and cost are not available", () => {
     const { lastFrame } = render(
-      React.createElement(StatusLine, { stats: { cwd: "/tmp/smoovcode", branch: "main" } }),
+      createElement(StatusLine, { stats: { cwd: "/tmp/smoovcode", branch: "main" } }),
     );
 
     const frame = lastFrame() ?? "";
