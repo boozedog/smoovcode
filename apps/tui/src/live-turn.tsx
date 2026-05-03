@@ -1,5 +1,5 @@
 import type { Mode } from "@smoovcode/agent";
-import { type Block, type ToolCallBlock } from "@smoovcode/ui-core";
+import { type Block } from "@smoovcode/ui-core";
 import { type AgentLike, useAgentSession } from "@smoovcode/ui-react";
 import { Box, Text } from "ink";
 import React from "react";
@@ -142,14 +142,6 @@ export function LiveTurn({
     });
   }
 
-  if (session.done || session.error) return null;
-
-  const runningToolCalls: ToolCallBlock[] = turn
-    ? turn.blocks.filter(
-        (b): b is ToolCallBlock => b.kind === "tool-call" && b.status === "running",
-      )
-    : [];
-
   return React.createElement(
     Box,
     { flexDirection: "column" },
@@ -161,14 +153,6 @@ export function LiveTurn({
         Box,
         { marginLeft: 1 },
         React.createElement(Text, { dimColor: true }, mode ? `working (${mode})` : "working"),
-      ),
-    ),
-    ...runningToolCalls.map((b) =>
-      React.createElement(
-        Box,
-        { key: b.id, marginLeft: 2 },
-        React.createElement(Spinner, null),
-        React.createElement(Box, { marginLeft: 1 }, React.createElement(Text, null, `[${b.name}]`)),
       ),
     ),
   );

@@ -100,7 +100,7 @@ describe("LiveTurn", () => {
     expect(frame).not.toContain("thinking:");
   });
 
-  test("renders one indented line per running tool-call, with the tool name", async () => {
+  test("does not render running tool-calls in the live bottom-pane region", async () => {
     const never = new Promise<void>(() => {});
     const agent: FakeAgent = {
       async *run() {
@@ -119,10 +119,9 @@ describe("LiveTurn", () => {
     );
     await flush();
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("[codemode]");
-    expect(frame).toContain("[bash]");
-    // Tool-call inputs must NOT leak into the live region — that's what
-    // overflows the terminal and produces duplicate scrollback.
+    expect(frame).toContain("working");
+    expect(frame).not.toContain("[codemode]");
+    expect(frame).not.toContain("[bash]");
     expect(frame).not.toContain("argv");
   });
 
@@ -166,6 +165,20 @@ describe("LiveTurn", () => {
     await flush();
     expect(onTurnDone).toHaveBeenCalledTimes(1);
     expect(onTurnDone.mock.calls[0][0]).toBe(0);
+  });
+
+  test("keeps the working row mounted until App removes the pending turn", async () => {
+    const agent = scriptedAgent([{ type: "text", delta: "done" }]);
+    const { lastFrame } = render(
+      React.createElement(LiveTurn, {
+        agent,
+        message: "go",
+        onBlockFinalize: () => {},
+        onTurnDone: () => {},
+      }),
+    );
+    await flush();
+    expect(lastFrame() ?? "").toContain("working");
   });
 
   test("pre-warms syntax highlighting before emitting a block, so a Static-style synchronous re-render shows ANSI", async () => {

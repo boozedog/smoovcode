@@ -45,8 +45,8 @@ describe("App", () => {
     );
 
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("/tmp/smoovcode (main)");
-    expect(frame).toContain("gpt-x • medium");
+    expect(frame).toContain("smoovcode on main");
+    expect(frame).toContain("[gpt-x]");
   });
 
   test("streams assistant chat text into the transcript without streaming tool-call blocks", async () => {

@@ -65,6 +65,24 @@ describe("Prompt", () => {
     expect(frame).toContain("... █");
   });
 
+  test("handles legacy Shift+Enter reports without inserting escape text", async () => {
+    const { lastFrame, stdin } = render(
+      React.createElement(Prompt, {
+        onSubmit: () => {},
+        mode: "edit",
+        onCycleMode: () => {},
+      }),
+    );
+    stdin.write("abc");
+    await flush();
+    stdin.write("\u001B[27;2;13~");
+    await flush();
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("abc");
+    expect(frame).toContain("... █");
+    expect(frame).not.toContain("[27;2;13~");
+  });
+
   test("renders the mode badge inline with the prompt", () => {
     const { lastFrame } = render(
       React.createElement(Prompt, {

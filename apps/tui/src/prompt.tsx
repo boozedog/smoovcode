@@ -4,6 +4,7 @@ import React from "react";
 import { ModeBadge } from "./mode-badge.tsx";
 
 const SGR_MOUSE_INPUT_RE = /^(?:\[?<\d+;\d+;\d+[mM])+$/;
+const MODIFIED_ENTER_INPUT_RE = /^\[(?:13;[23]u|27;[23];13~)$/;
 
 interface PromptProps {
   onSubmit: (message: string) => void;
@@ -60,6 +61,10 @@ export function Prompt({ onSubmit, mode, onCycleMode }: PromptProps): React.Reac
         if (ls.length > 1) return ls.slice(0, -1);
         return ls;
       });
+      return;
+    }
+    if (MODIFIED_ENTER_INPUT_RE.test(input)) {
+      setLines((ls) => [...ls, ""]);
       return;
     }
     if (SGR_MOUSE_INPUT_RE.test(input)) {

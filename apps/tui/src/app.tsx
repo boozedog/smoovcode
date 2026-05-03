@@ -94,8 +94,12 @@ export function App({ agent, approvalQueue, banner, stats }: AppProps): React.Re
   const { stdin } = useStdin();
   const { stdout } = useStdout();
   const rows = stdout.rows ?? 24;
-  const reservedRows =
-    (pending ? 3 : 0) + (!pending && approval === null ? 3 : 0) + (approval ? 5 : 0) + 3;
+  const statusRows = 2;
+  const bottomPaneMarginRows = 1;
+  const promptRows = !pending && approval === null ? 2 : 0;
+  const liveTurnRows = pending ? 1 : 0;
+  const approvalRows = approval ? 6 : 0;
+  const reservedRows = statusRows + bottomPaneMarginRows + promptRows + liveTurnRows + approvalRows;
   const transcriptHeight = Math.max(1, rows - reservedRows);
   const transcriptContent = useBoxMetrics(transcriptContentRef);
   const maxScrollLines = Math.max(0, transcriptContent.height - transcriptHeight);
