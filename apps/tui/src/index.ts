@@ -5,12 +5,9 @@ import {
   CloudflareExecutor,
   type Executor,
   findProjectRoot,
-  type HostApprovalRequest,
-  type HostApprover,
   LocalExecutor,
   QuickJSExecutor,
 } from "@smoovcode/agent";
-import { ApprovalQueue } from "@smoovcode/ui-core";
 import { TuiApp } from "./app.ts";
 
 function pickExecutor(name: string): Executor {
@@ -32,10 +29,7 @@ async function main() {
   const model = process.env.SMOOV_MODEL;
   const executor = pickExecutor(backend);
 
-  const approvalQueue = new ApprovalQueue<HostApprovalRequest>();
-  const approveHost: HostApprover = (req) => approvalQueue.enqueue(req);
-
-  const agent = new Agent({ executor, model, cwd: projectRoot, approveHost });
+  const agent = new Agent({ executor, model, cwd: projectRoot });
   const banner = `smoovcode (backend: ${executor.name}, root: ${projectRoot}) — ctrl-c to exit`;
   const agentLike = {
     session: agent.session,
@@ -44,7 +38,6 @@ async function main() {
 
   const app = new TuiApp({
     agent: agentLike,
-    approvalQueue,
     banner,
     stats: { cwd: projectRoot, model: model ?? "gpt-5" },
   });

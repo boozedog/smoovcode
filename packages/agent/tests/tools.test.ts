@@ -62,7 +62,7 @@ describe("tools.bash", () => {
   test("rejects commands that aren't in the sandbox capability set", async () => {
     const { bash } = createTools({ cwd: sandbox });
     await expect(invoke(bash, { argv: ["git", "status"] })).rejects.toThrow(
-      /not in (the )?sandbox|allowlist/i,
+      /sandbox-only|not in (the )?sandbox/i,
     );
   });
 
@@ -361,7 +361,7 @@ describe("tools.edit", () => {
   });
 });
 
-describe("tools.bash host dispatch", () => {
+describe("tools.bash sandbox-only dispatch", () => {
   let sandbox: string;
 
   beforeEach(() => {
@@ -372,99 +372,20 @@ describe("tools.bash host dispatch", () => {
     rmSync(sandbox, { recursive: true, force: true });
   });
 
-  test("routes allowlisted argv to the host spawner after approval", async () => {
+  test("rejects non-sandbox commands even if old host.allow config is injected", async () => {
     const { bash } = createTools({
       cwd: sandbox,
-      config: { host: { allow: [["git", "status"]] }, secrets: { deny: [] } },
-      approveHost: async () => true,
-      hostSpawn: async (argv, _opts) => ({
-        stdout: `ran: ${argv.join(" ")}\n`,
-        stderr: "",
-        exitCode: 0,
-      }),
+      config: { host: { allow: [["git", "status"]] }, secrets: { deny: [] } } as never,
     });
-    const out = (await invoke(bash, { argv: ["git", "status", "--short"] })) as {
-      stdout: string;
-      exitCode: number;
-    };
-    expect(out.stdout).toBe("ran: git status --short\n");
-    expect(out.exitCode).toBe(0);
+
+    await expect(invoke(bash, { argv: ["git", "status"] })).rejects.toThrow(/sandbox-only/i);
   });
 
-  test("rejects argv that is neither in the sandbox nor the host allowlist", async () => {
-    const { bash } = createTools({
-      cwd: sandbox,
-      config: { host: { allow: [["git", "status"]] }, secrets: { deny: [] } },
-    });
-    await expect(invoke(bash, { argv: ["git", "push"] })).rejects.toThrow(
-      /not in (the )?sandbox|allowlist/i,
-    );
-  });
-
-  test("does not spawn when approval is denied", async () => {
-    let spawned = false;
-    const { bash } = createTools({
-      cwd: sandbox,
-      config: { host: { allow: [["git", "status"]] }, secrets: { deny: [] } },
-      approveHost: async () => false,
-      hostSpawn: async () => {
-        spawned = true;
-        return { stdout: "", stderr: "", exitCode: 0 };
-      },
-    });
-    const out = (await invoke(bash, { argv: ["git", "status"] })) as {
-      stdout: string;
-      stderr: string;
-      exitCode: number;
-    };
-    expect(spawned).toBe(false);
-    expect(out.exitCode).not.toBe(0);
-    expect(out.stderr).toMatch(/denied/i);
-  });
-
-  test("forwards the project root as cwd to the host spawner", async () => {
-    let observedCwd: string | undefined;
-    const { bash } = createTools({
-      cwd: sandbox,
-      config: { host: { allow: [["git", "status"]] }, secrets: { deny: [] } },
-      approveHost: async () => true,
-      hostSpawn: async (_argv, opts) => {
-        observedCwd = opts.cwd;
-        return { stdout: "", stderr: "", exitCode: 0 };
-      },
-    });
-    await invoke(bash, { argv: ["git", "status"] });
-    expect(observedCwd).toBe(sandbox);
-  });
-
-  test("really spawns a host process for an allowlisted command (node --version)", async () => {
-    const { bash } = createTools({
-      cwd: sandbox,
-      config: { host: { allow: [["node", "--version"]] }, secrets: { deny: [] } },
-      approveHost: async () => true,
-    });
-    const out = (await invoke(bash, { argv: ["node", "--version"] })) as {
-      stdout: string;
-      exitCode: number;
-    };
-    expect(out.exitCode).toBe(0);
-    expect(out.stdout).toMatch(/^v\d+\.\d+\.\d+/);
-  });
-
-  test("path-traversal arguments are rejected before approval is asked", async () => {
-    let approvalCalled = false;
-    const { bash } = createTools({
-      cwd: sandbox,
-      config: { host: { allow: [["git", "diff"]] }, secrets: { deny: [] } },
-      approveHost: async () => {
-        approvalCalled = true;
-        return true;
-      },
-    });
+  test("path-traversal arguments are still rejected before command capability checks", async () => {
+    const { bash } = createTools({ cwd: sandbox });
     await expect(invoke(bash, { argv: ["git", "diff", "../escape.txt"] })).rejects.toThrow(
       /escape|traversal/i,
     );
-    expect(approvalCalled).toBe(false);
   });
 });
 

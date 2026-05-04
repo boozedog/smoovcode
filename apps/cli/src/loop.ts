@@ -1,14 +1,7 @@
 import { stdin, stdout } from "node:process";
 import readline from "node:readline/promises";
+import { Agent, type Executor, findProjectRoot } from "@smoovcode/agent";
 import {
-  Agent,
-  type Executor,
-  findProjectRoot,
-  type HostApprovalRequest,
-  type HostApprover,
-} from "@smoovcode/agent";
-import {
-  ApprovalQueue,
   type ConversationEvent,
   type ConversationState,
   initialConversation,
@@ -16,7 +9,6 @@ import {
 } from "@smoovcode/ui-core";
 
 const DIM = "\x1b[2m";
-const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
 
 interface RenderState {
@@ -73,32 +65,7 @@ export async function runLoop(executor: Executor, model?: string) {
   const rl = readline.createInterface({ input: stdin, output: stdout });
   const projectRoot = findProjectRoot(process.cwd());
 
-  const approvalQueue = new ApprovalQueue<HostApprovalRequest>();
-  const approveHost: HostApprover = (req) => approvalQueue.enqueue(req);
-
-  let pumping = false;
-  approvalQueue.subscribe(() => {
-    if (pumping) return;
-    pumping = true;
-    void (async () => {
-      try {
-        let req: HostApprovalRequest | null;
-        while ((req = approvalQueue.peek())) {
-          const display = req.argv
-            .map((a) => (/[^A-Za-z0-9_./-]/.test(a) ? JSON.stringify(a) : a))
-            .join(" ");
-          stdout.write(`\n${YELLOW}host execution requested:${RESET} ${display}\n`);
-          if (req.reason) stdout.write(`${DIM}reason: ${req.reason}${RESET}\n`);
-          const answer = (await rl.question("approve? [y/N] ")).trim().toLowerCase();
-          approvalQueue.resolve(answer === "y" || answer === "yes");
-        }
-      } finally {
-        pumping = false;
-      }
-    })();
-  });
-
-  const agent = new Agent({ executor, model, cwd: projectRoot, approveHost });
+  const agent = new Agent({ executor, model, cwd: projectRoot });
 
   stdout.write(`smoovcode (backend: ${executor.name}, root: ${projectRoot}) — ctrl-d to exit\n`);
 

@@ -1,5 +1,3 @@
-import type { HostApprovalRequest } from "@smoovcode/agent";
-import type { ApprovalQueue } from "@smoovcode/ui-core";
 import { AgentRunner, type AgentLike } from "./agent-runner.ts";
 import { TuiAppModel } from "./app-model.ts";
 import {
@@ -16,7 +14,6 @@ const KEYBOARD_PROTOCOL_DISABLE = "\u001b[<1u\u001b[>4;0m";
 
 export interface TuiAppOptions {
   agent: AgentLike;
-  approvalQueue: ApprovalQueue<HostApprovalRequest>;
   banner: string;
   stats?: SessionStats;
   stdin?: NodeJS.ReadStream;
@@ -31,7 +28,6 @@ export class TuiApp {
   private running = false;
   private startedAt = Date.now();
   private spinnerTimer: NodeJS.Timeout | null = null;
-  private unsubscribeApproval: (() => void) | null = null;
 
   constructor(private readonly opts: TuiAppOptions) {
     this.stdin = opts.stdin ?? process.stdin;
@@ -39,7 +35,6 @@ export class TuiApp {
     this.model = new TuiAppModel({
       banner: opts.banner,
       stats: opts.stats,
-      approvalQueue: opts.approvalQueue,
     });
     this.renderer = new TerminalRenderer(toTerminal(this.stdout));
   }
@@ -52,7 +47,6 @@ export class TuiApp {
     if (this.stdout.isTTY) this.stdout.write(KEYBOARD_PROTOCOL_ENABLE);
     this.stdin.resume();
     this.stdin.on("data", this.onData);
-    this.unsubscribeApproval = this.opts.approvalQueue.subscribe(this.render);
     this.render();
   }
 
@@ -61,8 +55,6 @@ export class TuiApp {
     this.running = false;
     this.stdin.off("data", this.onData);
     if (this.stdin.isTTY) this.stdin.setRawMode(false);
-    this.unsubscribeApproval?.();
-    this.unsubscribeApproval = null;
     if (this.stdout.isTTY) this.stdout.write(KEYBOARD_PROTOCOL_DISABLE);
     if (this.spinnerTimer) clearInterval(this.spinnerTimer);
     this.spinnerTimer = null;
@@ -79,7 +71,6 @@ export class TuiApp {
   };
 
   private handleKey(key: KeyInput): void {
-    const approval = this.opts.approvalQueue.peek();
     if (this.model.discardPrompt) {
       if (key.sequence?.toLowerCase() === "y") this.exit(0);
       if (key.sequence?.toLowerCase() === "n" || key.name === "escape" || key.name === "enter")
@@ -93,12 +84,6 @@ export class TuiApp {
     }
     if (key.ctrl && key.name === "o") {
       this.model.toggleCodemodeExpansion();
-      return;
-    }
-    if (approval !== null) {
-      if (key.sequence?.toLowerCase() === "y") this.model.approvePending(true);
-      if (key.sequence?.toLowerCase() === "n" || key.name === "escape")
-        this.model.approvePending(false);
       return;
     }
     if (this.model.pendingMessage === null) {

@@ -1,5 +1,4 @@
-import type { HostApprovalRequest } from "@smoovcode/agent";
-import { ApprovalQueue, type Block } from "@smoovcode/ui-core";
+import type { Block } from "@smoovcode/ui-core";
 import { PromptModel } from "./prompt-model.ts";
 import { renderBlock } from "./render-block.ts";
 import { formatStatusLine, type SessionStats } from "./status-line.ts";
@@ -22,7 +21,6 @@ export class TuiAppModel {
     private readonly opts: {
       banner: string;
       stats?: SessionStats;
-      approvalQueue?: ApprovalQueue<HostApprovalRequest>;
     },
   ) {
     this.staticItems = [{ kind: "banner", key: "banner", text: opts.banner }];
@@ -72,10 +70,6 @@ export class TuiAppModel {
       this.expandedCodemodeIds.size === codemodeIds.length ? new Set() : new Set(codemodeIds);
   }
 
-  approvePending(approved: boolean): void {
-    this.opts.approvalQueue?.resolve(approved);
-  }
-
   renderFrame(
     now = Date.now(),
     startedAt?: number,
@@ -95,14 +89,11 @@ export class TuiAppModel {
     if (this.pendingMessage !== null)
       lines.push("", `working ${formatElapsed(now - (startedAt ?? now))}`);
 
-    const approval = this.opts.approvalQueue?.peek() ?? null;
     if (this.discardPrompt) {
       lines.push(
         "",
         "There are staged sandbox filesystem changes that have not been applied to disk. Exit and discard them? [y/N]",
       );
-    } else if (approval !== null) {
-      lines.push("", ...renderApproval(approval));
     } else if (this.pendingMessage === null) {
       const promptStart = lines.length + 1;
       lines.push("", ...this.prompt.renderLines());
@@ -123,11 +114,6 @@ export class TuiAppModel {
   renderLines(now = Date.now(), startedAt?: number): string[] {
     return this.renderFrame(now, startedAt).lines;
   }
-}
-
-function renderApproval(req: HostApprovalRequest): string[] {
-  const argv = "argv" in req && Array.isArray(req.argv) ? req.argv.join(" ") : JSON.stringify(req);
-  return ["Approve host command?", argv, "Press y to approve, n to deny."];
 }
 
 function renderStatus(stats?: SessionStats): string {

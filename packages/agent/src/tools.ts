@@ -4,14 +4,8 @@ import { Lang, parse, type SgNode } from "@ast-grep/napi";
 import { tool } from "ai";
 import { Bash, type BashOptions, getCommandNames, OverlayFs, ReadWriteFs } from "just-bash";
 import { z } from "zod";
-import { loadSmoovConfig, matchesAllowPrefix, type SmoovConfig } from "./config.ts";
+import { loadSmoovConfig, type SmoovConfig } from "./config.ts";
 import { GitignoreFs, loadIgnorePatterns } from "./gitignore-fs.ts";
-import {
-  defaultHostSpawn,
-  type HostApprover,
-  type HostExecResult,
-  type HostSpawner,
-} from "./host-exec.ts";
 import { DirtyTrackingFs, type ToolSession } from "./tool-session.ts";
 
 const LANG_NAMES = ["JavaScript", "TypeScript", "Tsx", "Html", "Css"] as const;
@@ -56,21 +50,10 @@ export interface CreateToolsOptions {
   execTimeoutMs?: number;
   /**
    * Pre-loaded smoov config. When omitted, `loadSmoovConfig({ root: cwd })` is
-   * called so secrets.deny and host.allow take effect automatically. Mostly an
-   * injection point for tests.
+   * called so secrets.deny takes effect automatically. Mostly an injection
+   * point for tests.
    */
   config?: SmoovConfig;
-  /**
-   * Approval callback for host execution. Called once per host argv, before
-   * spawn. Returning `false` causes the call to be reported back to the model
-   * as a denied execution. Defaults to deny-all.
-   */
-  approveHost?: HostApprover;
-  /**
-   * Override the host spawner. Defaults to `defaultHostSpawn` (real
-   * `child_process.spawn`); useful in tests to avoid touching the host.
-   */
-  hostSpawn?: HostSpawner;
   /** Session-scoped overlay/dirty state. When omitted, a fresh session is created for this tool set. */
   session?: ToolSession;
 }
@@ -103,13 +86,11 @@ const COMMAND_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
 
 /**
  * Validate the *shape* of an argv: non-empty, plain command name, no path
- * arguments that escape the project root. This runs before the dispatcher
- * decides between sandbox and host paths so both branches share the same
- * rejection rules.
+ * arguments that escape the project root.
  *
  * Path traversal protection is defense in depth — the OverlayFs root
- * containment and the host spawn's locked cwd are the primary guards;
- * this gives the model a clearer error before it reaches them.
+ * containment is the primary guard; this gives the model a clearer error
+ * before it reaches it.
  */
 export function validateArgvShape(argv: readonly string[]): void {
   if (argv.length === 0) {
@@ -164,9 +145,6 @@ export function createTools(opts: CreateToolsOptions = {}) {
     : filteredOverlay;
   const ignoreMatcher = new GitignoreFs({ inner: rwfs, patterns: ignorePatterns });
   const execTimeoutMs = opts.execTimeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
-  const approveHost: HostApprover = opts.approveHost ?? (async () => false);
-  const hostSpawn: HostSpawner = opts.hostSpawn ?? defaultHostSpawn;
-  const allowList = config.host.allow;
   const bashEnv = new Bash({
     fs: sessionFs,
     cwd: mountPoint,
@@ -235,31 +213,9 @@ export function createTools(opts: CreateToolsOptions = {}) {
         const cmd = argv[0];
 
         if (!SANDBOX_COMMAND_NAMES.has(cmd)) {
-          if (!matchesAllowPrefix(argv, allowList)) {
-            throw new Error(
-              `bash: '${cmd}' is not in the sandbox capability set or the .smoov/config.json host allowlist.`,
-            );
-          }
-          const approved = await approveHost({ argv });
-          if (!approved) {
-            return {
-              stdout: "",
-              stderr: `bash: host execution of ${argv.join(" ")} was denied by the user.`,
-              exitCode: 1,
-            };
-          }
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), execTimeoutMs);
-          try {
-            const result: HostExecResult = await hostSpawn(argv, {
-              cwd: root,
-              timeoutMs: execTimeoutMs,
-              signal: controller.signal,
-            });
-            return result;
-          } finally {
-            clearTimeout(timer);
-          }
+          throw new Error(
+            `bash: '${cmd}' is not available. The bash tool is sandbox-only; use one of the sandbox command capabilities instead.`,
+          );
         }
 
         const controller = new AbortController();

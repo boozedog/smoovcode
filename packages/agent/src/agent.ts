@@ -3,7 +3,6 @@ import { createCodeTool } from "@cloudflare/codemode/ai";
 import { type ModelMessage, stepCountIs, streamText } from "ai";
 import { type ApiMode, detectApiMode } from "./api-mode.ts";
 import type { Executor } from "./executor.ts";
-import type { HostApprover } from "./host-exec.ts";
 import { createToolSession, type ToolSession } from "./tool-session.ts";
 
 const baseURL = process.env.SMOOV_BASE_URL ?? "https://api.openai.com/v1";
@@ -38,11 +37,6 @@ export interface AgentOptions {
   system?: string;
   /** Project root exposed to the tools. Defaults to process.cwd(). */
   cwd?: string;
-  /**
-   * Approval callback for host execution. Called once per host argv before
-   * spawn. Defaults to deny-all when omitted.
-   */
-  approveHost?: HostApprover;
   /** Existing staged tool session. Defaults to a new session owned by this Agent. */
   session?: ToolSession;
 }
@@ -64,26 +58,21 @@ export class Agent {
 
   constructor(private readonly opts: AgentOptions) {
     this.session =
-      opts.session ??
-      createToolSession({
-        ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
-        ...(opts.approveHost ? { approveHost: opts.approveHost } : {}),
-      });
+      opts.session ?? createToolSession(opts.cwd !== undefined ? { cwd: opts.cwd } : {});
   }
 
   async *run(userMessage: string, _runOpts?: AgentRunOptions): AsyncGenerator<AgentEvent> {
     this.history.push({ role: "user", content: userMessage });
 
-    const { bash, astGrep, write, edit } = this.session.tools({
-      ...(this.opts.cwd !== undefined ? { cwd: this.opts.cwd } : {}),
-      ...(this.opts.approveHost ? { approveHost: this.opts.approveHost } : {}),
-    });
+    const { bash, astGrep, write, edit } = this.session.tools(
+      this.opts.cwd !== undefined ? { cwd: this.opts.cwd } : {},
+    );
     // The split: today's read-style capabilities (bash, astGrep) live inside
     // codemode for orchestration (loops, Promise.all, intermediate values).
     // Mutating capabilities (write, edit) are top-level tools so each mutation
     // is a discrete, scrollback-visible event the harness can render and gate
-    // on. This is a capability policy, not an executor guarantee: any
-    // mutating tool exposed to codemode could still mutate via its host bridge.
+    // on. This is a capability policy, not an executor guarantee: keep
+    // mutating tools out of codemode unless they are safe to call there.
     const codemode = createCodeTool({
       tools: { bash, astGrep },
       executor: this.opts.executor,
