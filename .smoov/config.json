@@ -1,20 +1,4 @@
 {
-  "host": {
-    "allow": [
-      ["git", "status"],
-      ["git", "diff"],
-      ["git", "log"],
-      ["git", "show"],
-      ["git", "branch"],
-      ["git", "blame"],
-      ["vp", "test"],
-      ["vp", "check"],
-      ["vp", "lint"],
-      ["vp", "fmt"],
-      ["vp", "build"],
-      ["node", "--version"]
-    ]
-  },
   "secrets": {
     "deny": []
   }

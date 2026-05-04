@@ -205,18 +205,14 @@ describe("runLoop", () => {
     await runLoop(stubExecutor, "gpt-x");
     expect(agentConstructorOpts).toHaveLength(1);
     expect(agentConstructorOpts[0]).toMatchObject({ executor: stubExecutor, model: "gpt-x" });
-    expect(typeof (agentConstructorOpts[0] as { approveHost?: unknown }).approveHost).toBe(
-      "function",
-    );
+    expect(agentConstructorOpts[0]).not.toHaveProperty("approveHost");
   });
 
   test("omits model on the Agent when none is supplied", async () => {
     scriptedAnswers = [];
     await runLoop(stubExecutor);
     expect(agentConstructorOpts[0]).toMatchObject({ executor: stubExecutor, model: undefined });
-    expect(typeof (agentConstructorOpts[0] as { approveHost?: unknown }).approveHost).toBe(
-      "function",
-    );
+    expect(agentConstructorOpts[0]).not.toHaveProperty("approveHost");
   });
 
   test("prompts for single-line input with readline", async () => {
