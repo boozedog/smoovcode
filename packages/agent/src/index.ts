@@ -1,5 +1,22 @@
 export { Agent } from "./agent.ts";
 export type { AgentEvent, AgentOptions, AgentRunOptions } from "./agent.ts";
+export {
+  CapabilityRegistry,
+  createDefaultCapabilityRegistry,
+  defaultCapabilities,
+  defaultCapabilityEnv,
+  spawnHostProcess,
+  validateGitPath,
+} from "./capabilities.ts";
+export type {
+  Capability,
+  CapabilityContext,
+  CapabilityRegistryOptions,
+  CapabilitySafety,
+  HostProcessOptions,
+  HostProcessResult,
+  HostProcessRunner,
+} from "./capabilities.ts";
 export { createToolSession, DirtyTrackingFs, SimpleDirtyTracker } from "./tool-session.ts";
 export type { DirtyTracker, ToolSession } from "./tool-session.ts";
 export { detectApiMode } from "./api-mode.ts";

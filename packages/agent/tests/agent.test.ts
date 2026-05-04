@@ -330,19 +330,26 @@ describe("Agent", () => {
     expect(tools.edit).toBeDefined();
   });
 
-  test("passes only read-style tools (bash, astGrep) into codemode", async () => {
+  test("passes only read-style tools and host capabilities into codemode", async () => {
     // The split: reads stay inside codemode (orchestration-friendly), writes
     // are top-level. If a write ever leaks into codemode, the model can hide
     // mutations inside a TS scope and the harness loses visibility.
     nextStreamParts = [];
     await collect(new Agent({ executor: stubExecutor }).run("hi"));
     const tools = lastStreamArgs?.tools as {
-      codemode: { opts: { tools: Record<string, unknown> } };
+      codemode: { opts: { tools: Array<{ name?: string; tools: Record<string, unknown> }> } };
     };
-    const codemodeTools = tools.codemode.opts.tools;
-    expect(Object.keys(codemodeTools).sort()).toEqual(["astGrep", "bash"]);
-    expect(codemodeTools.write).toBeUndefined();
-    expect(codemodeTools.edit).toBeUndefined();
+    const codemodeProviders = tools.codemode.opts.tools;
+    const defaultProvider = codemodeProviders.find((p) => p.name === undefined);
+    const ghProvider = codemodeProviders.find((p) => p.name === "gh");
+    const gitProvider = codemodeProviders.find((p) => p.name === "git");
+    expect(Object.keys(defaultProvider?.tools ?? {}).sort()).toEqual(["astGrep", "bash"]);
+    expect(ghProvider?.tools.issue_view).toBeDefined();
+    expect(gitProvider?.tools.status).toBeDefined();
+    for (const provider of codemodeProviders) {
+      expect(provider.tools.write).toBeUndefined();
+      expect(provider.tools.edit).toBeUndefined();
+    }
   });
 
   test("system prompt explains the read-vs-write split", async () => {

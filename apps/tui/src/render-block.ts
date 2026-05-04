@@ -130,7 +130,8 @@ function renderEdit(
 }
 
 function countCodemodeToolCalls(code: string): number {
-  return code.match(/\bcodemode\.[A-Za-z_$][\w$]*\s*\(/g)?.length ?? 0;
+  const calls = code.match(/\b(?:codemode|gh|git)\.[A-Za-z_$][\w$]*\s*\(/g);
+  return calls?.length ?? 0;
 }
 
 function byteLength(value: unknown): number {

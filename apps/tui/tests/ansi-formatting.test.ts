@@ -61,6 +61,28 @@ describe("ANSI formatting", () => {
     expect(output).not.toContain("4 lines");
   });
 
+  test("codemode summary counts host capability calls", () => {
+    const block: Block = {
+      kind: "tool-call",
+      id: "b-0-0",
+      name: "codemode",
+      input: {
+        code: [
+          "async () => {",
+          "  await gh.issue_list({ state: 'open' });",
+          "  await git.status({});",
+          "}",
+        ].join("\n"),
+      },
+      status: "done",
+      output: { result: "ok" },
+    };
+
+    const output = stripAnsi(renderBlock(block).join("\n"));
+
+    expect(output).toContain("▶ [codemode] 2 calls");
+  });
+
   test("codemode summary prefers executor metrics when present", () => {
     const block: Block = {
       kind: "tool-call",

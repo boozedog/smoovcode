@@ -2,6 +2,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createCodeTool } from "@cloudflare/codemode/ai";
 import { type ModelMessage, stepCountIs, streamText } from "ai";
 import { type ApiMode, detectApiMode } from "./api-mode.ts";
+import { createDefaultCapabilityRegistry } from "./capabilities.ts";
 import type { Executor } from "./executor.ts";
 import { createToolSession, type ToolSession } from "./tool-session.ts";
 
@@ -64,9 +65,9 @@ export class Agent {
   async *run(userMessage: string, _runOpts?: AgentRunOptions): AsyncGenerator<AgentEvent> {
     this.history.push({ role: "user", content: userMessage });
 
-    const { bash, astGrep, write, edit } = this.session.tools(
-      this.opts.cwd !== undefined ? { cwd: this.opts.cwd } : {},
-    );
+    const cwd = this.opts.cwd ?? process.cwd();
+    const { bash, astGrep, write, edit } = this.session.tools({ cwd });
+    const hostCapabilities = createDefaultCapabilityRegistry({ cwd });
     // The split: today's read-style capabilities (bash, astGrep) live inside
     // codemode for orchestration (loops, Promise.all, intermediate values).
     // Mutating capabilities (write, edit) are top-level tools so each mutation
@@ -74,7 +75,7 @@ export class Agent {
     // on. This is a capability policy, not an executor guarantee: keep
     // mutating tools out of codemode unless they are safe to call there.
     const codemode = createCodeTool({
-      tools: { bash, astGrep },
+      tools: [{ tools: { bash, astGrep } }, ...hostCapabilities.toToolProviders()],
       executor: this.opts.executor,
     });
 
@@ -174,11 +175,11 @@ function explainSilentFinish(finishReason: string, stepCount: number): string {
 const DEFAULT_SYSTEM_PROMPT = `You are smoovcode, a coding agent. You have two tool surfaces — use the right one for the job.
 
 \`codemode\` (reads, orchestration):
-- Pass a single async TypeScript arrow function that drives the currently exposed read-style tools: \`codemode.bash(...)\` and \`codemode.astGrep(...)\`.
-- Use it for grep / find / cat / ls / ast-grep, multi-step exploration, filtering, summarizing, parallel reads via \`Promise.all\`, and computing edit plans.
+- Pass a single async TypeScript arrow function that drives the currently exposed read-style tools: \`codemode.bash(...)\`, \`codemode.astGrep(...)\`, \`gh.issue_view(...)\`, \`gh.issue_list(...)\`, \`gh.pr_view(...)\`, \`gh.repo_view(...)\`, \`git.status(...)\`, \`git.diff(...)\`, \`git.log(...)\`, etc.
+- Use it for grep / find / cat / ls / ast-grep, curated read-only GitHub/Git context, multi-step exploration, filtering, summarizing, parallel reads via \`Promise.all\`, and computing edit plans.
 - Tool result shapes — read them, don't guess. Tool results are objects, not arrays. \`astGrep\` returns \`{ matches: [...] }\`, \`bash\` returns \`{ stdout, stderr, exitCode }\`. Reading \`result.length\` on these silently yields \`undefined\` (and serializes as \`{}\`), which is the most common reason for an analysis loop to stall. If you're unsure of a tool's return shape, do one small probe call and \`return\` the raw value before building on top of it.
 - Console output is captured. Anything you \`console.log\` / \`console.error\` inside a codemode block is returned alongside the result and visible to you on the next turn. Use it freely to introspect intermediate values.
-- The executor is not a mutation boundary. Codemode is safe because only staged/sandbox capabilities are exposed there: \`codemode.bash\` writes go to the session overlay and never touch host disk, and \`codemode.astGrep\` only searches.
+- The executor is not a mutation boundary. Codemode is safe because only staged/sandbox/read-only capabilities are exposed there: \`codemode.bash\` writes go to the session overlay and never touch host disk, \`codemode.astGrep\` only searches, and \`gh[...]\` / \`git.*\` are fixed-argv typed host wrappers with no raw command passthrough.
 
 \`write\` and \`edit\` (staged mutations, top-level):
 - \`write({ path, content })\` stages a create or overwrite with full contents. Use for new files or whole-file rewrites.
