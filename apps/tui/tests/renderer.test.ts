@@ -41,4 +41,17 @@ describe("TerminalRenderer", () => {
     expect(term.output).toContain("\u001b[2J");
     expect(term.output).toContain("a\u001b[?2026l");
   });
+
+  test("full redraws when content shrinks", () => {
+    const term = new FakeTerminal({ rows: 10, cols: 80 });
+    const renderer = new TerminalRenderer(term);
+
+    renderer.render(["summary", "line 1", "line 2", "prompt"], { force: true });
+    term.clearOutput();
+
+    renderer.render(["summary", "prompt"]);
+
+    expect(term.output).toContain("\u001b[2J");
+    expect(term.output).toContain("summary\r\nprompt\u001b[?2026l");
+  });
 });

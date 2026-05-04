@@ -61,6 +61,28 @@ describe("ANSI formatting", () => {
     expect(output).not.toContain("4 lines");
   });
 
+  test("codemode summary counts host capability calls", () => {
+    const block: Block = {
+      kind: "tool-call",
+      id: "b-0-0",
+      name: "codemode",
+      input: {
+        code: [
+          "async () => {",
+          "  await gh.issue_list({ state: 'open' });",
+          "  await git.status({});",
+          "}",
+        ].join("\n"),
+      },
+      status: "done",
+      output: { result: "ok" },
+    };
+
+    const output = stripAnsi(renderBlock(block).join("\n"));
+
+    expect(output).toContain("▶ [codemode] 2 calls");
+  });
+
   test("codemode summary prefers executor metrics when present", () => {
     const block: Block = {
       kind: "tool-call",
@@ -72,6 +94,23 @@ describe("ANSI formatting", () => {
     };
 
     expect(stripAnsi(renderBlock(block).join("\n"))).toContain("▶ [codemode] 3 calls");
+  });
+
+  test("codemode expanded output truncates very large string fields", () => {
+    const block: Block = {
+      kind: "tool-call",
+      id: "b-0-0",
+      name: "codemode",
+      input: { code: "async () => await git.diff({ paths: [] })" },
+      status: "done",
+      output: { result: { stdout: `head-${"x".repeat(20_000)}-tail` } },
+    };
+
+    const output = stripAnsi(renderBlock(block, { expandedCodemode: true }).join("\n"));
+
+    expect(output).toContain("head-");
+    expect(output).toContain("… truncated");
+    expect(output).not.toContain("-tail");
   });
 
   test("wraps ANSI-styled text by visible width", () => {

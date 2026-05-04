@@ -43,7 +43,7 @@ export function isEditInput(
 }
 
 export function formatCodemodeResult(output: unknown): string {
-  return `→ ${JSON.stringify(extractResult(output), null, 2)}`;
+  return `→ ${JSON.stringify(truncateLargeStrings(extractResult(output)), null, 2)}`;
 }
 
 export function inferLangFromPath(path: string): Lang | null {
@@ -130,7 +130,8 @@ function renderEdit(
 }
 
 function countCodemodeToolCalls(code: string): number {
-  return code.match(/\bcodemode\.[A-Za-z_$][\w$]*\s*\(/g)?.length ?? 0;
+  const calls = code.match(/\b(?:codemode|gh|git)\.[A-Za-z_$][\w$]*\s*\(/g);
+  return calls?.length ?? 0;
 }
 
 function byteLength(value: unknown): number {
@@ -142,6 +143,22 @@ function formatBytes(bytes: number): string {
   if (bytes < 1_000) return `${bytes} B`;
   if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(1).replace(/\.0$/, "")} kB`;
   return `${(bytes / 1_000_000).toFixed(1).replace(/\.0$/, "")} MB`;
+}
+
+const MAX_CODEMODE_STRING_CHARS = 4_000;
+
+function truncateLargeStrings(value: unknown): unknown {
+  if (typeof value === "string") {
+    if (value.length <= MAX_CODEMODE_STRING_CHARS) return value;
+    return `${value.slice(0, MAX_CODEMODE_STRING_CHARS)}\n… truncated ${formatBytes(byteLength(value))} string`;
+  }
+  if (Array.isArray(value)) return value.map((item) => truncateLargeStrings(item));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [key, truncateLargeStrings(nested)]),
+    );
+  }
+  return value;
 }
 
 function extractResult(o: unknown): unknown {

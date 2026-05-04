@@ -100,7 +100,7 @@ export class TerminalRenderer {
       return;
     }
 
-    if (widthChanged || heightChanged) {
+    if (widthChanged || heightChanged || newLines.length < this.previousLines.length) {
       fullRender(true);
       return;
     }
