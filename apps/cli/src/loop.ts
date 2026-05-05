@@ -16,6 +16,10 @@ interface RenderState {
   inReasoning: boolean;
 }
 
+function formatJson(value: unknown): string {
+  return JSON.stringify(value, null, 2);
+}
+
 function renderEvent(
   state: RenderState,
   event: ConversationEvent,
@@ -41,13 +45,9 @@ function renderEvent(
     case "tool-call":
       write += `\n[${event.name}] ${JSON.stringify(event.input)}\n`;
       break;
-    case "tool-result": {
-      const o = event.output;
-      const compact =
-        o && typeof o === "object" && "result" in o ? (o as { result: unknown }).result : o;
-      write += `[${event.name}] → ${JSON.stringify(compact)}\n`;
+    case "tool-result":
+      write += `[${event.name}] → ${formatJson(event.output)}\n`;
       break;
-    }
     case "tool-error":
       write += `[${event.name}] ✗ ${event.error}\n`;
       break;

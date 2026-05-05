@@ -151,20 +151,37 @@ describe("runLoop", () => {
     expect(writes.join("")).toContain(`[echo] {"text":"hi"}`);
   });
 
-  test("compacts tool-result payloads that have a `result` field", async () => {
+  test("prints full raw tool-result payloads that have a `result` field", async () => {
     scriptedAnswers = ["hi"];
     scriptedEventsByTurn = [
-      [{ type: "tool-result", name: "echo", output: { result: { echoed: "x" } } }],
+      [
+        {
+          type: "tool-result",
+          name: "codemode",
+          output: {
+            result: { echoed: "x" },
+            logs: ["log line"],
+            metrics: { toolCalls: 1 },
+            nestedToolCalls: [{ provider: "sh", name: "pwd", status: "done" }],
+          },
+        },
+      ],
     ];
     await runLoop(stubExecutor);
-    expect(writes.join("")).toContain(`[echo] → {"echoed":"x"}`);
+    const out = writes.join("");
+    expect(out).toContain(`[codemode] → {\n`);
+    expect(out).toContain(`"result": {`);
+    expect(out).toContain(`"echoed": "x"`);
+    expect(out).toContain(`"logs": [`);
+    expect(out).toContain(`"metrics": {`);
+    expect(out).toContain(`"nestedToolCalls": [`);
   });
 
   test("passes through tool-result payloads without a `result` field", async () => {
     scriptedAnswers = ["hi"];
     scriptedEventsByTurn = [[{ type: "tool-result", name: "t", output: { foo: "bar" } }]];
     await runLoop(stubExecutor);
-    expect(writes.join("")).toContain(`[t] → {"foo":"bar"}`);
+    expect(writes.join("")).toContain(`[t] → {\n  "foo": "bar"\n}`);
   });
 
   test("formats tool-error events with the ✗ marker", async () => {
