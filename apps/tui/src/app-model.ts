@@ -103,6 +103,7 @@ export class TuiAppModel {
   renderFrame(
     now = Date.now(),
     startedAt?: number,
+    opts: { focused?: boolean; cursorVisible?: boolean } = {},
   ): { lines: string[]; cursor?: { line: number; column: number } } {
     const lines: string[] = [];
     let cursor: { line: number; column: number } | undefined;
@@ -124,7 +125,7 @@ export class TuiAppModel {
 
     if (this.pendingMessage === null) {
       const promptStart = lines.length + 1;
-      lines.push("", ...this.prompt.renderLines());
+      lines.push("", ...this.prompt.renderLines(opts));
       const promptLine = promptStart + this.prompt.lines.length - 1;
       const promptPrefix = this.prompt.lines.length === 1 ? "> " : "... ";
       cursor = {

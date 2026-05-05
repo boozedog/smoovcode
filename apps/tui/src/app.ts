@@ -11,6 +11,10 @@ import type { SessionStats } from "./status-line.ts";
 
 const KEYBOARD_PROTOCOL_ENABLE = "\u001b[>1u\u001b[>4;2m";
 const KEYBOARD_PROTOCOL_DISABLE = "\u001b[<1u\u001b[>4;0m";
+const FOCUS_REPORTING_ENABLE = "\u001b[?1004h";
+const FOCUS_REPORTING_DISABLE = "\u001b[?1004l";
+const HIDE_CURSOR = "\u001b[?25l";
+const SHOW_CURSOR = "\u001b[?25h";
 
 export interface TuiAppOptions {
   agent: AgentLike;
@@ -28,6 +32,10 @@ export class TuiApp {
   private running = false;
   private startedAt = Date.now();
   private spinnerTimer: NodeJS.Timeout | null = null;
+  private cursorTimer: NodeJS.Timeout | null = null;
+  private typingTimer: NodeJS.Timeout | null = null;
+  private focused = true;
+  private cursorVisible = true;
 
   constructor(private readonly opts: TuiAppOptions) {
     this.stdin = opts.stdin ?? process.stdin;
@@ -44,7 +52,9 @@ export class TuiApp {
     this.running = true;
     this.stdin.setEncoding("utf8");
     if (this.stdin.isTTY) this.stdin.setRawMode(true);
-    if (this.stdout.isTTY) this.stdout.write(KEYBOARD_PROTOCOL_ENABLE);
+    if (this.stdout.isTTY)
+      this.stdout.write(`${HIDE_CURSOR}${FOCUS_REPORTING_ENABLE}${KEYBOARD_PROTOCOL_ENABLE}`);
+    this.ensureCursorBlink();
     this.stdin.resume();
     this.stdin.on("data", this.onData);
     this.stdout.on("resize", this.onResize);
@@ -59,28 +69,49 @@ export class TuiApp {
     this.stdout.off("resize", this.onResize);
     process.off("SIGWINCH", this.onResize);
     if (this.stdin.isTTY) this.stdin.setRawMode(false);
-    if (this.stdout.isTTY) this.stdout.write(KEYBOARD_PROTOCOL_DISABLE);
+    if (this.stdout.isTTY)
+      this.stdout.write(`${KEYBOARD_PROTOCOL_DISABLE}${FOCUS_REPORTING_DISABLE}${SHOW_CURSOR}`);
     if (this.spinnerTimer) clearInterval(this.spinnerTimer);
     this.spinnerTimer = null;
+    if (this.cursorTimer) clearInterval(this.cursorTimer);
+    this.cursorTimer = null;
+    if (this.typingTimer) clearTimeout(this.typingTimer);
+    this.typingTimer = null;
   }
 
   private readonly render = (): void => {
-    const frame = this.model.renderFrame(Date.now(), this.startedAt);
+    const frame = this.model.renderFrame(Date.now(), this.startedAt, {
+      focused: this.focused,
+      cursorVisible: this.cursorVisible,
+    });
     this.renderer.render(frame.lines, { cursor: frame.cursor });
   };
 
   private readonly onResize = (): void => {
     if (!this.running) return;
-    const frame = this.model.renderFrame(Date.now(), this.startedAt);
-    this.renderer.render(frame.lines, { cursor: frame.cursor });
+    this.render();
   };
 
   private readonly onData = (chunk: Buffer | string): void => {
+    this.pauseCursorBlinkWhileTyping();
     for (const key of parseInput(chunk.toString())) this.handleKey(key);
     this.render();
   };
 
   private handleKey(key: KeyInput): void {
+    if (key.name === "focus-in") {
+      this.focused = true;
+      this.cursorVisible = true;
+      this.ensureCursorBlink();
+      return;
+    }
+    if (key.name === "focus-out") {
+      this.focused = false;
+      this.cursorVisible = true;
+      if (this.cursorTimer) clearInterval(this.cursorTimer);
+      this.cursorTimer = null;
+      return;
+    }
     if (key.ctrl && key.name === "c") {
       this.exit(0);
       return;
@@ -122,6 +153,26 @@ export class TuiApp {
     void runner.start();
   }
 
+  private ensureCursorBlink(): void {
+    if (this.cursorTimer || !this.focused) return;
+    this.cursorTimer = setInterval(() => {
+      if (this.model.pendingMessage !== null) return;
+      this.cursorVisible = !this.cursorVisible;
+      this.render();
+    }, 500);
+  }
+
+  private pauseCursorBlinkWhileTyping(): void {
+    this.cursorVisible = true;
+    if (this.cursorTimer) clearInterval(this.cursorTimer);
+    this.cursorTimer = null;
+    if (this.typingTimer) clearTimeout(this.typingTimer);
+    this.typingTimer = setTimeout(() => {
+      this.typingTimer = null;
+      this.ensureCursorBlink();
+    }, 250);
+  }
+
   private exit(code: number): void {
     this.stop();
     process.exit(code);
@@ -142,6 +193,12 @@ export function parseInput(input: string): KeyInput[] {
       } else if (modifiedEnter) {
         keys.push(parseKey(modifiedEnter));
         idx += modifiedEnter.length - 1;
+      } else if (rest.startsWith("\u001b[I")) {
+        keys.push({ sequence: "\u001b[I", name: "focus-in" });
+        idx += 2;
+      } else if (rest.startsWith("\u001b[O")) {
+        keys.push({ sequence: "\u001b[O", name: "focus-out" });
+        idx += 2;
       } else if (rest.startsWith("\u001b[A")) {
         keys.push({ sequence: "\u001b[A", name: "up" });
         idx += 2;

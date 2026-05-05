@@ -66,6 +66,14 @@ function modifierHasCtrl(modifier: number): boolean {
   return ((modifier - 1) & 4) !== 0;
 }
 
+export interface PromptRenderOptions {
+  focused?: boolean;
+  cursorVisible?: boolean;
+}
+
+const ACTIVE_CURSOR = "\u001b[92m█\u001b[39m";
+const INACTIVE_CURSOR = "\u001b[92m░\u001b[39m";
+
 export class PromptModel {
   lines: string[] = [""];
 
@@ -114,7 +122,19 @@ export class PromptModel {
     this.lines = next;
   }
 
-  renderLines(): string[] {
-    return this.lines.map((line, idx) => `${idx === 0 ? "> " : "... "}${line}`);
+  renderLines(opts: PromptRenderOptions = {}): string[] {
+    const renderCursor = opts.focused !== undefined || opts.cursorVisible !== undefined;
+    const focused = opts.focused ?? true;
+    const cursor = renderCursor
+      ? focused
+        ? opts.cursorVisible === false
+          ? ""
+          : ACTIVE_CURSOR
+        : INACTIVE_CURSOR
+      : "";
+    return this.lines.map((line, idx) => {
+      const rendered = `${idx === 0 ? "> " : "... "}${line}`;
+      return idx === this.lines.length - 1 ? `${rendered}${cursor}` : rendered;
+    });
   }
 }
