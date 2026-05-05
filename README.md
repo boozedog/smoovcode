@@ -31,14 +31,14 @@ Multiple executor backends for running AI-generated codemode orchestration code:
 | `local`      | Direct Node.js execution with timeout protection |
 | `cloudflare` | Cloudflare Workers runtime (planned)             |
 
-Executors are not mutation boundaries. They control where the model-authored codemode program runs; side effects come from the tools/capabilities exposed to that program. smoovcode mounts the real project read/write at `/projects/<folder-name>` in a virtual tool filesystem, so sandbox `bash` writes and top-level `write`/`edit` calls update the working tree immediately.
+Executors are not mutation boundaries. They control where the model-authored codemode program runs; side effects come from the tools/capabilities exposed to that program. smoovcode mounts the real project read/write at `/projects/<folder-name>` in a virtual tool filesystem, so sandbox command writes and top-level `write`/`edit` calls update the working tree immediately.
 
 ### Agent Tools
 
 The AI agent has access to a deliberately small capability surface:
 
 - **`codemode`** — Run model-authored TypeScript orchestration code with read-style tools
-- **sandboxed command tool** — Execute one argv command from the in-process `just-bash` builtin registry; no shell parsing and no arbitrary host binaries
+- **`sh.*` sandboxed command tools** — Execute reviewed read-style commands from the in-process `just-bash` builtin registry; no shell parsing and no arbitrary host binaries
 - **`astGrep`** — Structural code search using AST patterns (JavaScript, TypeScript, TSX, HTML, CSS)
 - **typed `git.*` / `gh.*` capabilities** — Read-only host wrappers for repository and GitHub context
 - **`write`** — Create or overwrite project files as visible top-level mutations
@@ -172,8 +172,8 @@ The codebase is organized into clear separation of concerns:
 1. AI generates tool calls during streaming response.
 2. Top-level tools execute in the host agent process (`codemode`, `write`, `edit`).
 3. `codemode` runs model-authored TypeScript in the configured executor.
-4. The tools exposed to codemode (`bash`, `astGrep`) bridge back to host-side implementations.
-5. Sandbox `bash`, `write`, and `edit` operate through a `MountableFs` with the real project mounted read/write at `/projects/<folder-name>`.
+4. The tools exposed to codemode (`sh.*`, `astGrep`, `git.*`, `gh.*`) bridge back to host-side implementations.
+5. Sandbox commands, `write`, and `edit` operate through a `MountableFs` with the real project mounted read/write at `/projects/<folder-name>`.
 6. Typed host capabilities such as `git.*` and `gh.*` invoke fixed argv commands with validation, timeouts, and output caps.
 7. Results stream back to the AI for continuation.
 

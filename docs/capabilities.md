@@ -18,13 +18,13 @@ Performs exact string replacement in a file relative to the project root. By def
 
 ## Tools inside codemode
 
-### Sandboxed command tool
+### `sh.*` sandboxed command tools
 
-The current model-facing name is `bash`, but it is sandbox-only. It executes a single argv command from the in-process `just-bash` registry with no shell parsing.
+Codemode exposes reviewed `just-bash` commands as typed methods such as `sh.rg({ args: [...] })`, `sh.cat({ args: [...] })`, and `sh.find({ args: [...] })`. Each method executes one sandbox builtin with no shell parsing and no arbitrary host binaries.
 
-It is useful for file/text inspection commands such as `ls`, `cat`, `rg`, `grep`, `find`, `sed`, `awk`, and `jq`. The cwd is the virtual project mount at `/projects/<folder-name>`.
+These tools are useful for file/text inspection commands such as `ls`, `cat`, `rg`, `grep`, `find`, `sed`, `awk`, and `jq`. The cwd is the virtual project mount at `/projects/<folder-name>`.
 
-It does not run arbitrary host binaries. If `argv[0]` is not a sandbox builtin, the call fails.
+Meta/arbitrary-code commands and mutation-classified commands are not exposed through `sh.*` by default.
 
 ### `astGrep`
 

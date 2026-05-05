@@ -70,17 +70,17 @@ export class Agent {
     this.history.push({ role: "user", content: userMessage });
 
     const cwd = this.opts.cwd ?? process.cwd();
-    const { bash, sh, astGrep, write, edit } = this.session.tools({ cwd });
+    const { sh, astGrep, write, edit } = this.session.tools({ cwd });
     const hostCapabilities = createDefaultCapabilityRegistry({ cwd });
-    // The split: today's read-style capabilities (bash, astGrep) live inside
-    // codemode for orchestration (loops, Promise.all, intermediate values).
+    // The split: today's read-style capabilities live inside codemode for
+    // orchestration (loops, Promise.all, intermediate values).
     // Mutating capabilities (write, edit) are top-level tools so each mutation
     // is a discrete, scrollback-visible event the harness can render and gate
     // on. This is a capability policy, not an executor guarantee: keep
     // mutating tools out of codemode unless they are safe to call there.
     const codemode = createCodeTool({
       tools: [
-        { tools: { bash, astGrep } },
+        { tools: { astGrep } },
         { name: "sh", tools: sh },
         ...hostCapabilities.toToolProviders(),
       ],
@@ -221,11 +221,11 @@ const DEFAULT_SYSTEM_PROMPT = `You are smoovcode, a coding agent. You have two t
 
 \`codemode\` (reads, orchestration):
 - Pass a single async TypeScript arrow function that drives the currently exposed read-style tools: \`sh.rg(...)\`, \`sh.cat(...)\`, \`codemode.astGrep(...)\`, \`gh.issue_view(...)\`, \`gh.issue_list(...)\`, \`gh.pr_view(...)\`, \`gh.repo_view(...)\`, \`git.status(...)\`, \`git.diff(...)\`, \`git.log(...)\`, etc.
-- Prefer specific/specialized tools over \`codemode.bash\` whenever they are suitable. Use \`sh.*\` for reviewed sandbox commands, \`git.*\` for git information, and \`gh.*\` for GitHub information; reach for \`codemode.bash\` only when no better capability exists for the task.
+- Use \`sh.*\` for reviewed sandbox commands, \`git.*\` for git information, and \`gh.*\` for GitHub information. The old generic bash escape hatch is not exposed inside codemode; call typed capabilities such as \`sh.rg({ args: [...] })\`, \`sh.cat({ args: [...] })\`, and \`sh.find({ args: [...] })\` instead.
 - Use it for grep / find / cat / ls / ast-grep, curated GitHub/Git context, multi-step exploration, filtering, summarizing, parallel reads via \`Promise.all\`, and computing edit plans. The sandbox cwd is the virtual mounted project directory \`/projects/<folder-name>\`.
-- Tool result shapes — read them, don't guess. Tool results are objects, not arrays. \`astGrep\` returns \`{ matches: [...] }\`, \`bash\` returns \`{ stdout, stderr, exitCode }\`. Reading \`result.length\` on these silently yields \`undefined\` (and serializes as \`{}\`), which is the most common reason for an analysis loop to stall. If you're unsure of a tool's return shape, do one small probe call and \`return\` the raw value before building on top of it.
+- Tool result shapes — read them, don't guess. Tool results are objects, not arrays. \`astGrep\` returns \`{ matches: [...] }\`; \`sh.*\` commands return \`{ stdout, stderr, exitCode }\`. Reading \`result.length\` on these silently yields \`undefined\` (and serializes as \`{}\`), which is the most common reason for an analysis loop to stall. If you're unsure of a tool's return shape, do one small probe call and \`return\` the raw value before building on top of it.
 - Console output is captured. Anything you \`console.log\` / \`console.error\` inside a codemode block is returned alongside the result and visible to you on the next turn. Use it freely to introspect intermediate values.
-- The executor is not a mutation boundary. Side effects come from exposed capabilities: sandbox \`bash\` runs in the mounted project filesystem, \`astGrep\` searches files, and \`gh.*\` / \`git.*\` are fixed-argv typed host wrappers with no raw command passthrough.
+- The executor is not a mutation boundary. Side effects come from exposed capabilities: sandbox \`sh.*\` commands run in the mounted project filesystem, \`astGrep\` searches files, and \`gh.*\` / \`git.*\` are fixed-argv typed host wrappers with no raw command passthrough.
 
 \`write\` and \`edit\` (top-level file mutations):
 - \`write({ path, content })\` creates or overwrites a project file with full contents. Use for new files or whole-file rewrites.

@@ -463,7 +463,8 @@ describe("Agent", () => {
     const shProvider = codemodeProviders.find((p) => p.name === "sh");
     const ghProvider = codemodeProviders.find((p) => p.name === "gh");
     const gitProvider = codemodeProviders.find((p) => p.name === "git");
-    expect(Object.keys(defaultProvider?.tools ?? {}).sort()).toEqual(["astGrep", "bash"]);
+    expect(Object.keys(defaultProvider?.tools ?? {}).sort()).toEqual(["astGrep"]);
+    expect(defaultProvider?.tools.bash).toBeUndefined();
     expect(shProvider?.tools.rg).toBeDefined();
     expect(shProvider?.tools.rm).toBeUndefined();
     expect(ghProvider?.tools.issue_view).toBeDefined();
@@ -485,14 +486,14 @@ describe("Agent", () => {
     expect(sys).toMatch(/executor is not a mutation boundary/i);
   });
 
-  test("system prompt tells the model to prefer specific tools over bash", async () => {
+  test("system prompt teaches sh commands and does not mention codemode.bash", async () => {
     nextStreamParts = [];
     await collect(new Agent({ executor: stubExecutor }).run("hi"));
     const sys = lastStreamArgs?.system as string;
 
-    expect(sys).toMatch(/prefer/i);
-    expect(sys).toMatch(/specific|specialized|suitable/i);
-    expect(sys).toMatch(/bash/i);
+    expect(sys).toMatch(/sh\.rg/);
+    expect(sys).toMatch(/sh\.cat/);
+    expect(sys).not.toMatch(/codemode\.bash/);
   });
 
   test("does not expose plan/edit mode controls", async () => {
