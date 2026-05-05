@@ -1,5 +1,4 @@
 import {
-  OverlayFs,
   type CpOptions,
   type FileContent,
   type IFileSystem,
@@ -110,27 +109,20 @@ export class DirtyTrackingFs implements IFileSystem {
 }
 
 export interface ToolSession {
-  projectOverlay: OverlayFs;
   dirty: DirtyTracker;
   tools(opts?: Omit<CreateToolsOptions, "session">): AgentTools;
   reset(): void;
 }
 
 export function createToolSession(opts: Omit<CreateToolsOptions, "session"> = {}): ToolSession {
-  const root = opts.cwd ?? process.cwd();
   const dirty = new SimpleDirtyTracker();
-  let projectOverlay = new OverlayFs({ root });
 
   return {
-    get projectOverlay() {
-      return projectOverlay;
-    },
     dirty,
     tools(toolOpts = {}) {
       return createTools({ ...opts, ...toolOpts, cwd: toolOpts.cwd ?? opts.cwd, session: this });
     },
     reset() {
-      projectOverlay = new OverlayFs({ root });
       dirty.clear();
     },
   };

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
@@ -41,9 +41,11 @@ describe("tools.bash", () => {
     expect(out.exitCode).toBe(1);
   });
 
-  test("can read files from the cwd via the overlay", async () => {
+  test("starts in the mounted project cwd and reads files there", async () => {
     writeFileSync(join(sandbox, "greet.txt"), "hi from disk\n");
     const { bash } = createTools({ cwd: sandbox });
+    const pwd = (await invoke(bash, { argv: ["pwd"] })) as { stdout: string };
+    expect(pwd.stdout).toBe(`/projects/${sandbox.split("/").at(-1)}\n`);
     const out = (await invoke(bash, { argv: ["cat", "greet.txt"] })) as { stdout: string };
     expect(out.stdout).toBe("hi from disk\n");
   });
@@ -201,36 +203,35 @@ describe("tools.write", () => {
     rmSync(sandbox, { recursive: true, force: true });
   });
 
-  test("stages a new file without touching host disk", async () => {
+  test("writes a new file to host disk through the project mount", async () => {
     const { write, bash } = createTools({ cwd: sandbox });
     await invoke(write, { path: "hello.txt", content: "hi\n" });
     const out = (await invoke(bash, { argv: ["cat", "hello.txt"] })) as { stdout: string };
     expect(out.stdout).toBe("hi\n");
-    expect(existsSync(join(sandbox, "hello.txt"))).toBe(false);
+    expect(readFileSync(join(sandbox, "hello.txt"), "utf8")).toBe("hi\n");
   });
 
-  test("stages an overwrite and leaves host disk unchanged", async () => {
+  test("overwrites host disk through the project mount", async () => {
     writeFileSync(join(sandbox, "x.txt"), "old");
     const { write, bash } = createTools({ cwd: sandbox });
     await invoke(write, { path: "x.txt", content: "new" });
     const out = (await invoke(bash, { argv: ["cat", "x.txt"] })) as { stdout: string };
     expect(out.stdout).toBe("new");
-    expect(readFileSync(join(sandbox, "x.txt"), "utf8")).toBe("old");
+    expect(readFileSync(join(sandbox, "x.txt"), "utf8")).toBe("new");
   });
 
-  test("stages parent directories as needed", async () => {
+  test("creates parent directories on host disk as needed", async () => {
     const { write, bash } = createTools({ cwd: sandbox });
     await invoke(write, { path: "a/b/c.txt", content: "deep" });
     const out = (await invoke(bash, { argv: ["cat", "a/b/c.txt"] })) as { stdout: string };
     expect(out.stdout).toBe("deep");
-    expect(existsSync(join(sandbox, "a/b/c.txt"))).toBe(false);
+    expect(readFileSync(join(sandbox, "a/b/c.txt"), "utf8")).toBe("deep");
   });
 
-  test("syncs the bash overlay so a subsequent cat sees the new content", async () => {
-    const { write, bash } = createTools({ cwd: sandbox });
-    await invoke(write, { path: "synced.txt", content: "fresh\n" });
-    const out = (await invoke(bash, { argv: ["cat", "synced.txt"] })) as { stdout: string };
-    expect(out.stdout).toBe("fresh\n");
+  test("sandbox bash writes persist to host disk through the project mount", async () => {
+    const { bash } = createTools({ cwd: sandbox });
+    await invoke(bash, { argv: ["tee", "from-bash.txt"], stdin: "fresh\n" });
+    expect(readFileSync(join(sandbox, "from-bash.txt"), "utf8")).toBe("fresh\n");
   });
 
   test("rejects path traversal outside the project root", async () => {
@@ -270,7 +271,7 @@ describe("tools.edit", () => {
     rmSync(sandbox, { recursive: true, force: true });
   });
 
-  test("replaces a unique occurrence in the staged view", async () => {
+  test("replaces a unique occurrence in the mounted project file", async () => {
     writeFileSync(join(sandbox, "f.txt"), "alpha beta gamma\n");
     const { edit, bash } = createTools({ cwd: sandbox });
     const out = (await invoke(edit, {
@@ -281,7 +282,7 @@ describe("tools.edit", () => {
     expect(out.replacements).toBe(1);
     const cat = (await invoke(bash, { argv: ["cat", "f.txt"] })) as { stdout: string };
     expect(cat.stdout).toBe("alpha BETA gamma\n");
-    expect(readFileSync(join(sandbox, "f.txt"), "utf8")).toBe("alpha beta gamma\n");
+    expect(readFileSync(join(sandbox, "f.txt"), "utf8")).toBe("alpha BETA gamma\n");
   });
 
   test("rejects when oldString occurs more than once and replaceAll is false", async () => {
@@ -292,7 +293,7 @@ describe("tools.edit", () => {
     );
   });
 
-  test("replaceAll substitutes every occurrence in the staged view", async () => {
+  test("replaceAll substitutes every occurrence in the mounted project file", async () => {
     writeFileSync(join(sandbox, "dup.txt"), "x x x");
     const { edit, bash } = createTools({ cwd: sandbox });
     const out = (await invoke(edit, {
@@ -304,7 +305,7 @@ describe("tools.edit", () => {
     expect(out.replacements).toBe(3);
     const cat = (await invoke(bash, { argv: ["cat", "dup.txt"] })) as { stdout: string };
     expect(cat.stdout).toBe("y y y");
-    expect(readFileSync(join(sandbox, "dup.txt"), "utf8")).toBe("x x x");
+    expect(readFileSync(join(sandbox, "dup.txt"), "utf8")).toBe("y y y");
   });
 
   test("rejects when the file does not exist", async () => {
@@ -337,7 +338,7 @@ describe("tools.edit", () => {
     ).rejects.toThrow();
   });
 
-  test("syncs the overlay so a subsequent bash cat reflects the edit", async () => {
+  test("syncs the mounted filesystem so a subsequent bash cat reflects the edit", async () => {
     writeFileSync(join(sandbox, "f.txt"), "before\n");
     const { edit, bash } = createTools({ cwd: sandbox });
     await invoke(edit, { path: "f.txt", oldString: "before", newString: "after" });
@@ -482,6 +483,16 @@ describe("tools secret/ignore filtering", () => {
     await expect(invoke(write, { path: ".env", content: "TOKEN=1" })).rejects.toThrow(
       /ignored|denied|secret/i,
     );
+  });
+
+  test("bash sandbox refuses to write to a secret-deny path", async () => {
+    const { bash } = createTools({ cwd: sandbox });
+    const out = (await invoke(bash, { argv: ["tee", ".env"], stdin: "TOKEN=1" })) as {
+      exitCode: number;
+      stderr: string;
+    };
+    expect(out.exitCode).not.toBe(0);
+    expect(out.stderr).toMatch(/no such file|ignored|denied|secret/i);
   });
 
   test("secrets.deny patterns from .smoov/config.json hide files from the sandbox", async () => {

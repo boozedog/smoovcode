@@ -13,7 +13,6 @@ export class TuiAppModel {
   readonly staticItems: StaticItem[];
   liveItems: StaticItem[] = [];
   pendingMessage: string | null = null;
-  discardPrompt = false;
   keyCounter = 0;
   expandedCodemodeIds = new Set<string>();
 
@@ -89,12 +88,7 @@ export class TuiAppModel {
     if (this.pendingMessage !== null)
       lines.push("", `working ${formatElapsed(now - (startedAt ?? now))}`);
 
-    if (this.discardPrompt) {
-      lines.push(
-        "",
-        "There are staged sandbox filesystem changes that have not been applied to disk. Exit and discard them? [y/N]",
-      );
-    } else if (this.pendingMessage === null) {
+    if (this.pendingMessage === null) {
       const promptStart = lines.length + 1;
       lines.push("", ...this.prompt.renderLines());
       const promptLine = promptStart + this.prompt.lines.length - 1;

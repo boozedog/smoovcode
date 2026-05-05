@@ -31,7 +31,7 @@ Multiple executor backends for running AI-generated codemode orchestration code:
 | `local`      | Direct Node.js execution with timeout protection |
 | `cloudflare` | Cloudflare Workers runtime (planned)             |
 
-Executors are not mutation boundaries. They control where the model-authored codemode program runs; side effects come from the tools/capabilities exposed to that program. Today smoovcode stages file changes in a session-scoped overlay: sandbox `bash` writes and top-level `write`/`edit` calls are visible to later turns, but host disk is not changed until an explicit apply workflow.
+Executors are not mutation boundaries. They control where the model-authored codemode program runs; side effects come from the tools/capabilities exposed to that program. smoovcode mounts the real project read/write at `/projects/<folder-name>` in a virtual tool filesystem, so sandbox `bash` writes and top-level `write`/`edit` calls update the working tree immediately.
 
 ### Agent Tools
 
@@ -39,13 +39,12 @@ The AI agent has access to these powerful tools:
 
 - **`bash`** — Execute a single argv command through the sandbox or, when explicitly allowlisted, through host execution with per-call approval
 - **`astGrep`** — Structural code search using AST patterns (JavaScript, TypeScript, TSX, HTML, CSS)
-- **`write`** — Stage file creates or overwrites in the session overlay
-- **`edit`** — Stage precise text replacements in the session overlay
+- **`write`** — Create or overwrite project files
+- **`edit`** — Apply precise text replacements to project files
 
 ### Security Features
 
-- **Session-scoped staged filesystem** — The model can stage changes; host disk is not modified by sandbox/write/edit tools
-- **Dirty-session warning** — The TUI warns before discarding unapplied staged changes on exit
+- **Mounted project filesystem** — The project is mounted read/write at `/projects/<folder-name>` with root containment
 - **Host execution approval** — Interactive prompts before running allowlisted host commands
 - **Gitignore-aware** — Respects top-level and nested project ignore patterns
 - **Secret filtering** — Built-in deny lists for sensitive files
@@ -172,7 +171,7 @@ The codebase is organized into clear separation of concerns:
 2. Top-level tools execute in the host agent process (`codemode`, `write`, `edit`).
 3. `codemode` runs model-authored TypeScript in the configured executor.
 4. The tools exposed to codemode (`bash`, `astGrep`) bridge back to host-side implementations.
-5. Sandbox `bash`, `write`, and `edit` share the Agent's session-scoped OverlayFs; staged changes survive across turns and do not touch host disk.
+5. Sandbox `bash`, `write`, and `edit` operate through a `MountableFs` with the real project mounted read/write at `/projects/<folder-name>`.
 6. Host-backed `bash` dispatches argv to a real process only when the argv matches `.smoov/config.json` / `.smoov/config.local.json` and the user approves that call.
 7. Results stream back to the AI for continuation.
 

@@ -84,7 +84,7 @@ describe("GitignoreFs (over OverlayFs with mount point)", () => {
   let sandbox: string;
 
   beforeEach(() => {
-    sandbox = mkdtempSync(join(tmpdir(), "smoov-ignorefs-overlay-"));
+    sandbox = mkdtempSync(join(tmpdir(), "smoov-ignorefs-"));
   });
 
   afterEach(() => {

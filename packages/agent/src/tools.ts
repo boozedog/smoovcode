@@ -1,8 +1,23 @@
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
-import { isAbsolute, join, normalize, relative, resolve as resolvePath, sep } from "node:path";
+import {
+  basename,
+  isAbsolute,
+  join,
+  normalize,
+  relative,
+  resolve as resolvePath,
+  sep,
+} from "node:path";
 import { Lang, parse, type SgNode } from "@ast-grep/napi";
 import { tool } from "ai";
-import { Bash, type BashOptions, getCommandNames, OverlayFs, ReadWriteFs } from "just-bash";
+import {
+  Bash,
+  type BashOptions,
+  getCommandNames,
+  InMemoryFs,
+  MountableFs,
+  ReadWriteFs,
+} from "just-bash";
 import { z } from "zod";
 import { loadSmoovConfig, type SmoovConfig } from "./config.ts";
 import { GitignoreFs, loadIgnorePatterns } from "./gitignore-fs.ts";
@@ -35,7 +50,7 @@ function formatMatch(file: string, node: SgNode): AstGrepMatch {
 export type AgentTools = ReturnType<typeof createTools>;
 
 export interface CreateToolsOptions {
-  /** Root directory exposed to the bash tool via OverlayFs. Defaults to process.cwd(). */
+  /** Root directory mounted read/write under /projects/<folder-name>. Defaults to process.cwd(). */
   cwd?: string;
   /**
    * Extra ignore patterns layered on top of the project's .gitignore and the
@@ -54,7 +69,7 @@ export interface CreateToolsOptions {
    * point for tests.
    */
   config?: SmoovConfig;
-  /** Session-scoped overlay/dirty state. When omitted, a fresh session is created for this tool set. */
+  /** Session-scoped dirty state. When omitted, a fresh filesystem view is created for this tool set. */
   session?: ToolSession;
 }
 
@@ -127,22 +142,26 @@ function isInsidePath(child: string, parent: string): boolean {
 
 export function createTools(opts: CreateToolsOptions = {}) {
   const root = opts.cwd ?? process.cwd();
-  const overlay = opts.session?.projectOverlay ?? new OverlayFs({ root });
-  const rwfs = new ReadWriteFs({ root });
-  const mountPoint = overlay.getMountPoint();
-  const config: SmoovConfig = opts.config ?? loadSmoovConfig({ root });
+  const resolvedRoot = resolvePath(root);
+  const projectName = basename(resolvedRoot);
+  const mountPoint = `/projects/${projectName}`;
+  const rwfs = new ReadWriteFs({ root: resolvedRoot });
+  const config: SmoovConfig = opts.config ?? loadSmoovConfig({ root: resolvedRoot });
   const ignorePatterns = loadIgnorePatterns({
-    root,
+    root: resolvedRoot,
     extra: [...config.secrets.deny, ...(opts.extraDenyPatterns ?? [])],
   });
-  const filteredOverlay = new GitignoreFs({
-    inner: overlay,
-    mountPoint,
+  const projectFs = new GitignoreFs({
+    inner: rwfs,
     patterns: ignorePatterns,
   });
-  const sessionFs = opts.session
-    ? new DirtyTrackingFs(filteredOverlay, opts.session.dirty)
-    : filteredOverlay;
+  const mountedProjectFs = opts.session
+    ? new DirtyTrackingFs(projectFs, opts.session.dirty)
+    : projectFs;
+  const sessionFs = new MountableFs({
+    base: new InMemoryFs(),
+    mounts: [{ mountPoint, filesystem: mountedProjectFs }],
+  });
   const ignoreMatcher = new GitignoreFs({ inner: rwfs, patterns: ignorePatterns });
   const execTimeoutMs = opts.execTimeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
   const bashEnv = new Bash({
@@ -174,7 +193,7 @@ export function createTools(opts: CreateToolsOptions = {}) {
   function assertNoSymlink(relPath: string): void {
     const normalized = normalize(relPath);
     const parts = normalized.split(/[\\/]+/).filter((p) => p !== "" && p !== ".");
-    let current = root;
+    let current = resolvedRoot;
     for (const part of parts) {
       current = join(current, part);
       if (!existsSync(current)) return;
@@ -198,7 +217,7 @@ export function createTools(opts: CreateToolsOptions = {}) {
   return {
     bash: tool({
       description:
-        "Run a single sandboxed command via argv (no shell parsing). argv[0] must be a sandbox built-in (cat, ls, grep, rg, sed, awk, jq, find, etc.). Reads come from the project directory; writes stay in memory and never touch disk. Compose pipelines/conditionals in code by calling this tool multiple times.",
+        "Run a single sandboxed command via argv (no shell parsing). argv[0] must be a sandbox built-in (cat, ls, grep, rg, sed, awk, jq, find, etc.). Cwd is the mounted project directory /projects/<folder-name>; writes under it update the real working tree. Compose pipelines/conditionals in code by calling this tool multiple times.",
       inputSchema: z.object({
         argv: z
           .array(z.string())
@@ -248,7 +267,7 @@ export function createTools(opts: CreateToolsOptions = {}) {
 
     write: tool({
       description:
-        "Stage a create-or-overwrite of `path` (relative to the project root) with `content`. This writes only to the session sandbox overlay; host disk is not modified until a future explicit apply action. Root-bounded; symlinks blocked. Subsequent sandbox reads see the staged content.",
+        "Create or overwrite `path` (relative to the project root) with `content` in the real working tree. Root-bounded; symlinks blocked; ignore/secret-deny protected paths rejected. Subsequent sandbox reads see the new content.",
       inputSchema: z.object({
         path: z.string().min(1).describe("Path relative to the project root."),
         content: z.string().describe("Full file content to write."),
@@ -261,7 +280,7 @@ export function createTools(opts: CreateToolsOptions = {}) {
 
     edit: tool({
       description:
-        "Stage a replacement of `oldString` with `newString` in `path` (relative to the project root). Reads from the session sandbox view, including prior staged changes. By default `oldString` must occur exactly once; pass `replaceAll: true` to substitute every occurrence. Host disk is not modified until a future explicit apply action; root-bounded; symlinks blocked.",
+        "Replace `oldString` with `newString` in `path` (relative to the project root) in the real working tree. By default `oldString` must occur exactly once; pass `replaceAll: true` to substitute every occurrence. Root-bounded; symlinks blocked; ignore/secret-deny protected paths rejected.",
       inputSchema: z.object({
         path: z.string().min(1).describe("Path relative to the project root."),
         oldString: z.string().describe("Exact substring to find."),
@@ -351,13 +370,13 @@ export function createTools(opts: CreateToolsOptions = {}) {
           return { matches };
         }
 
-        const resolvedPaths = paths!.map((p) => resolvePath(root, p));
+        const resolvedPaths = paths!.map((p) => resolvePath(resolvedRoot, p));
         const files: string[] = [];
         const visit = (absPath: string): void => {
-          if (!isInsidePath(absPath, root)) {
+          if (!isInsidePath(absPath, resolvedRoot)) {
             throw new Error(`astGrep: path escapes the project root: ${absPath}`);
           }
-          const rel = relative(root, absPath) || ".";
+          const rel = relative(resolvedRoot, absPath) || ".";
           if (rel !== "." && ignoreMatcher.isIgnored(rel)) return;
           const st = lstatSync(absPath);
           if (st.isSymbolicLink()) return;

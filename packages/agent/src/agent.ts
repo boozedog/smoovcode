@@ -38,7 +38,7 @@ export interface AgentOptions {
   system?: string;
   /** Project root exposed to the tools. Defaults to process.cwd(). */
   cwd?: string;
-  /** Existing staged tool session. Defaults to a new session owned by this Agent. */
+  /** Existing tool session. Defaults to a new session owned by this Agent. */
   session?: ToolSession;
 }
 
@@ -177,16 +177,16 @@ const DEFAULT_SYSTEM_PROMPT = `You are smoovcode, a coding agent. You have two t
 \`codemode\` (reads, orchestration):
 - Pass a single async TypeScript arrow function that drives the currently exposed read-style tools: \`codemode.bash(...)\`, \`codemode.astGrep(...)\`, \`gh.issue_view(...)\`, \`gh.issue_list(...)\`, \`gh.pr_view(...)\`, \`gh.repo_view(...)\`, \`git.status(...)\`, \`git.diff(...)\`, \`git.log(...)\`, etc.
 - Prefer specific/specialized tools over \`codemode.bash\` whenever they are suitable. Use \`git.*\` for git information and \`gh.*\` for GitHub information; reach for \`codemode.bash\` only when no better capability exists for the task.
-- Use it for grep / find / cat / ls / ast-grep, curated read-only GitHub/Git context, multi-step exploration, filtering, summarizing, parallel reads via \`Promise.all\`, and computing edit plans.
+- Use it for grep / find / cat / ls / ast-grep, curated GitHub/Git context, multi-step exploration, filtering, summarizing, parallel reads via \`Promise.all\`, and computing edit plans. The sandbox cwd is the virtual mounted project directory \`/projects/<folder-name>\`.
 - Tool result shapes — read them, don't guess. Tool results are objects, not arrays. \`astGrep\` returns \`{ matches: [...] }\`, \`bash\` returns \`{ stdout, stderr, exitCode }\`. Reading \`result.length\` on these silently yields \`undefined\` (and serializes as \`{}\`), which is the most common reason for an analysis loop to stall. If you're unsure of a tool's return shape, do one small probe call and \`return\` the raw value before building on top of it.
 - Console output is captured. Anything you \`console.log\` / \`console.error\` inside a codemode block is returned alongside the result and visible to you on the next turn. Use it freely to introspect intermediate values.
-- The executor is not a mutation boundary. Codemode is safe because only staged/sandbox/read-only capabilities are exposed there: \`codemode.bash\` writes go to the session overlay and never touch host disk, \`codemode.astGrep\` only searches, and \`gh.*\` / \`git.*\` are fixed-argv typed host wrappers with no raw command passthrough.
+- The executor is not a mutation boundary. Side effects come from exposed capabilities: sandbox \`bash\` runs in the mounted project filesystem, \`astGrep\` searches files, and \`gh.*\` / \`git.*\` are fixed-argv typed host wrappers with no raw command passthrough.
 
-\`write\` and \`edit\` (staged mutations, top-level):
-- \`write({ path, content })\` stages a create or overwrite with full contents. Use for new files or whole-file rewrites.
-- \`edit({ path, oldString, newString, replaceAll? })\` stages a substring replacement; \`oldString\` must be unique unless \`replaceAll: true\`. Use for surgical edits.
-- Staged changes are visible to later tool calls and later turns in this chat, but host disk is not modified until an explicit future apply action.
-- Prefer many small \`edit\` calls over one large \`write\` when you're patching an existing file — the staged diffs are clearer and a failure leaves the rest intact.
+\`write\` and \`edit\` (top-level file mutations):
+- \`write({ path, content })\` creates or overwrites a project file with full contents. Use for new files or whole-file rewrites.
+- \`edit({ path, oldString, newString, replaceAll? })\` performs a substring replacement; \`oldString\` must be unique unless \`replaceAll: true\`. Use for surgical edits.
+- File changes update the real working tree immediately through the mounted, root-bounded project filesystem.
+- Prefer many small \`edit\` calls over one large \`write\` when you're patching an existing file — the diffs are clearer and a failure leaves the rest intact.
 
 Step economy:
 - Each top-level tool call is one step (max 30). Batch reads inside a single codemode block where you can.

@@ -26,9 +26,9 @@ export type Providers = ResolvedProvider[] | ToolFns;
  *
  * An Executor is not a mutation boundary: any provider function exposed to the
  * code can perform whatever side effects that host function allows. Keep safety
- * decisions in the capability/tool layer (what providers are exposed, whether
- * they are read-only, and whether calls require approval), not in the choice of
- * executor alone.
+ * decisions in the capability/tool layer (what providers are exposed, what
+ * filesystem or host resources they can reach, and whether calls require
+ * approval), not in the choice of executor alone.
  */
 export interface Executor {
   readonly name: string;

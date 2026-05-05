@@ -21,17 +21,17 @@ describe("ToolSession", () => {
     rmSync(sandbox, { recursive: true, force: true });
   });
 
-  test("reuses one filesystem across tool sets", async () => {
+  test("reuses one mounted project filesystem across tool sets", async () => {
     const session = createToolSession({ cwd: sandbox });
-    await invoke(session.tools().write, { path: "one.txt", content: "staged\n" });
+    await invoke(session.tools().write, { path: "one.txt", content: "persisted\n" });
     const out = (await invoke(session.tools().bash, { argv: ["cat", "one.txt"] })) as {
       stdout: string;
     };
-    expect(out.stdout).toBe("staged\n");
-    expect(existsSync(join(sandbox, "one.txt"))).toBe(false);
+    expect(out.stdout).toBe("persisted\n");
+    expect(existsSync(join(sandbox, "one.txt"))).toBe(true);
   });
 
-  test("dirty flag flips on staged write, mkdir, and rm", async () => {
+  test("dirty flag flips on write, mkdir, and rm", async () => {
     const session = createToolSession({ cwd: sandbox });
     expect(session.dirty.isDirty()).toBe(false);
     await invoke(session.tools().write, { path: "one.txt", content: "x" });
@@ -44,15 +44,15 @@ describe("ToolSession", () => {
     expect(session.dirty.isDirty()).toBe(true);
   });
 
-  test("reset clears dirty state and staged files", async () => {
+  test("reset clears dirty state without reverting real project files", async () => {
     const session = createToolSession({ cwd: sandbox });
     await invoke(session.tools().write, { path: "one.txt", content: "x" });
     expect(session.dirty.isDirty()).toBe(true);
     session.reset();
     expect(session.dirty.isDirty()).toBe(false);
     const out = (await invoke(session.tools().bash, { argv: ["cat", "one.txt"] })) as {
-      exitCode: number;
+      stdout: string;
     };
-    expect(out.exitCode).not.toBe(0);
+    expect(out.stdout).toBe("x");
   });
 });

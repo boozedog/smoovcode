@@ -58,8 +58,8 @@ export interface GitignoreFsOptions {
 /**
  * Filesystem wrapper that hides paths matched by ignore patterns. Reads of
  * matched paths fail with ENOENT; readdir results have matched entries
- * filtered out. Writes pass through unchanged — the bash sandbox writes to
- * an in-memory overlay, so write filtering belongs at the persistence layer.
+ * filtered out. Writes to matched paths are rejected so protected files cannot
+ * be changed through sandbox bash or top-level file tools.
  */
 export class GitignoreFs implements IFileSystem {
   private readonly inner: IFileSystem;
@@ -120,11 +120,18 @@ export class GitignoreFs implements IFileSystem {
     return this.inner.readFileBuffer(path);
   }
 
+  private rejectIgnoredWrite(path: string): void {
+    if (this.isIgnored(path)) {
+      throw new Error(`path is on the ignore/secret-deny list and cannot be modified: ${path}`);
+    }
+  }
+
   async writeFile(
     path: string,
     content: FileContent,
     options?: WriteFileOptions | BufferEncoding,
   ): Promise<void> {
+    this.rejectIgnoredWrite(path);
     return this.inner.writeFile(path, content, options);
   }
 
@@ -133,6 +140,7 @@ export class GitignoreFs implements IFileSystem {
     content: FileContent,
     options?: WriteFileOptions | BufferEncoding,
   ): Promise<void> {
+    this.rejectIgnoredWrite(path);
     return this.inner.appendFile(path, content, options);
   }
 
@@ -152,6 +160,7 @@ export class GitignoreFs implements IFileSystem {
   }
 
   async mkdir(path: string, options?: MkdirOptions): Promise<void> {
+    this.rejectIgnoredWrite(path);
     return this.inner.mkdir(path, options);
   }
 
@@ -191,14 +200,18 @@ export class GitignoreFs implements IFileSystem {
   }
 
   async rm(path: string, options?: RmOptions): Promise<void> {
+    this.rejectIgnoredWrite(path);
     return this.inner.rm(path, options);
   }
 
   async cp(src: string, dest: string, options?: CpOptions): Promise<void> {
+    this.rejectIgnoredWrite(dest);
     return this.inner.cp(src, dest, options);
   }
 
   async mv(src: string, dest: string): Promise<void> {
+    this.rejectIgnoredWrite(src);
+    this.rejectIgnoredWrite(dest);
     return this.inner.mv(src, dest);
   }
 
@@ -212,14 +225,17 @@ export class GitignoreFs implements IFileSystem {
   }
 
   async chmod(path: string, mode: number): Promise<void> {
+    this.rejectIgnoredWrite(path);
     return this.inner.chmod(path, mode);
   }
 
   async symlink(target: string, linkPath: string): Promise<void> {
+    this.rejectIgnoredWrite(linkPath);
     return this.inner.symlink(target, linkPath);
   }
 
   async link(existingPath: string, newPath: string): Promise<void> {
+    this.rejectIgnoredWrite(newPath);
     return this.inner.link(existingPath, newPath);
   }
 
@@ -233,6 +249,7 @@ export class GitignoreFs implements IFileSystem {
   }
 
   async utimes(path: string, atime: Date, mtime: Date): Promise<void> {
+    this.rejectIgnoredWrite(path);
     return this.inner.utimes(path, atime, mtime);
   }
 }

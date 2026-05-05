@@ -81,15 +81,8 @@ export class TuiApp {
   };
 
   private handleKey(key: KeyInput): void {
-    if (this.model.discardPrompt) {
-      if (key.sequence?.toLowerCase() === "y") this.exit(0);
-      if (key.sequence?.toLowerCase() === "n" || key.name === "escape" || key.name === "enter")
-        this.model.discardPrompt = false;
-      return;
-    }
     if (key.ctrl && key.name === "c") {
-      if (this.hasDirtySession()) this.model.discardPrompt = true;
-      else this.exit(0);
+      this.exit(0);
       return;
     }
     if (key.ctrl && key.name === "o") {
@@ -122,11 +115,6 @@ export class TuiApp {
       onRender: this.render,
     });
     void runner.start();
-  }
-
-  private hasDirtySession(): boolean {
-    const maybeAgent = this.opts.agent as { session?: { dirty?: { isDirty?: () => boolean } } };
-    return maybeAgent.session?.dirty?.isDirty?.() === true;
   }
 
   private exit(code: number): void {
