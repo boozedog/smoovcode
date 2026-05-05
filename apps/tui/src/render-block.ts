@@ -84,7 +84,7 @@ function renderCodemode(
   if (!expanded && block.status !== "running") {
     const tail =
       block.status === "error"
-        ? ` ${ansi.red(`✗ ${block.error}`)}`
+        ? ` ${ansi.red("✗ error")}`
         : extractResult(block.output) === undefined
           ? " ✓ done"
           : "";

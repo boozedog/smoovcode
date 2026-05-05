@@ -96,6 +96,39 @@ describe("ANSI formatting", () => {
     expect(stripAnsi(renderBlock(block).join("\n"))).toContain("▶ [codemode] 3 calls");
   });
 
+  test("collapsed codemode error summary hides verbose error details", () => {
+    const block: Block = {
+      kind: "tool-call",
+      id: "b-0-0",
+      name: "codemode",
+      input: { code: "async () => await sh.pwd()" },
+      status: "error",
+      error: "Code execution failed: Error: very verbose validation payload",
+    };
+
+    const output = stripAnsi(renderBlock(block).join("\n"));
+
+    expect(output).toContain("▶ [codemode]");
+    expect(output).toContain("✗ error");
+    expect(output).not.toContain("very verbose validation payload");
+  });
+
+  test("expanded codemode error shows verbose error details", () => {
+    const block: Block = {
+      kind: "tool-call",
+      id: "b-0-0",
+      name: "codemode",
+      input: { code: "async () => await sh.pwd()" },
+      status: "error",
+      error: "Code execution failed: Error: very verbose validation payload",
+    };
+
+    const output = stripAnsi(renderBlock(block, { expandedCodemode: true }).join("\n"));
+
+    expect(output).toContain("async () => await sh.pwd()");
+    expect(output).toContain("very verbose validation payload");
+  });
+
   test("codemode expanded output truncates very large string fields", () => {
     const block: Block = {
       kind: "tool-call",

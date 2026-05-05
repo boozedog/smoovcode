@@ -66,13 +66,18 @@ export class TuiAppModel {
   }
 
   toggleCodemodeExpansion(): void {
-    const codemodeIds = this.staticItems.flatMap((item) =>
+    const codemodeIds = this.currentCodemodeBlockIds();
+    const allExpanded =
+      codemodeIds.length > 0 && codemodeIds.every((id) => this.expandedCodemodeIds.has(id));
+    this.expandedCodemodeIds = allExpanded ? new Set() : new Set(codemodeIds);
+  }
+
+  private currentCodemodeBlockIds(): string[] {
+    return [...this.staticItems, ...this.liveItems].flatMap((item) =>
       item.kind === "block" && item.block.kind === "tool-call" && item.block.name === "codemode"
-        ? [item.key]
+        ? [item.block.id]
         : [],
     );
-    this.expandedCodemodeIds =
-      this.expandedCodemodeIds.size === codemodeIds.length ? new Set() : new Set(codemodeIds);
   }
 
   renderFrame(
@@ -87,7 +92,9 @@ export class TuiAppModel {
       else
         lines.push(
           "",
-          ...renderBlock(item.block, { expandedCodemode: this.expandedCodemodeIds.has(item.key) }),
+          ...renderBlock(item.block, {
+            expandedCodemode: this.expandedCodemodeIds.has(item.block.id),
+          }),
         );
     }
 
