@@ -38,7 +38,7 @@ describe("TerminalRenderer", () => {
     term.cols = 40;
     renderer.render(["a"]);
 
-    expect(term.output).toContain("\u001b[2J");
+    expect(term.output).toContain("\u001b[H\u001b[0J");
     expect(term.output).toContain("a\u001b[?2026l");
   });
 
@@ -51,7 +51,7 @@ describe("TerminalRenderer", () => {
 
     renderer.render(["summary", "prompt"]);
 
-    expect(term.output).toContain("\u001b[2J");
+    expect(term.output).toContain("\u001b[H\u001b[0J");
     expect(term.output).toContain("summary\r\nprompt\u001b[?2026l");
   });
 });

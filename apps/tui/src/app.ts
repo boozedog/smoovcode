@@ -47,6 +47,8 @@ export class TuiApp {
     if (this.stdout.isTTY) this.stdout.write(KEYBOARD_PROTOCOL_ENABLE);
     this.stdin.resume();
     this.stdin.on("data", this.onData);
+    this.stdout.on("resize", this.onResize);
+    process.on("SIGWINCH", this.onResize);
     this.render();
   }
 
@@ -54,6 +56,8 @@ export class TuiApp {
     if (!this.running) return;
     this.running = false;
     this.stdin.off("data", this.onData);
+    this.stdout.off("resize", this.onResize);
+    process.off("SIGWINCH", this.onResize);
     if (this.stdin.isTTY) this.stdin.setRawMode(false);
     if (this.stdout.isTTY) this.stdout.write(KEYBOARD_PROTOCOL_DISABLE);
     if (this.spinnerTimer) clearInterval(this.spinnerTimer);
@@ -61,6 +65,12 @@ export class TuiApp {
   }
 
   private readonly render = (): void => {
+    const frame = this.model.renderFrame(Date.now(), this.startedAt);
+    this.renderer.render(frame.lines, { cursor: frame.cursor });
+  };
+
+  private readonly onResize = (): void => {
+    if (!this.running) return;
     const frame = this.model.renderFrame(Date.now(), this.startedAt);
     this.renderer.render(frame.lines, { cursor: frame.cursor });
   };

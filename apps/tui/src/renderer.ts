@@ -72,7 +72,7 @@ export class TerminalRenderer {
 
     const fullRender = (clear: boolean): void => {
       let buffer = SYNC_START;
-      if (clear) buffer += `${CSI}2J${CSI}H${CSI}3J`;
+      if (clear) buffer += `${CSI}H${CSI}0J`;
       buffer += newLines.join("\r\n");
       buffer += SYNC_END;
       this.terminal.write(buffer);
