@@ -35,17 +35,19 @@ Executors are not mutation boundaries. They control where the model-authored cod
 
 ### Agent Tools
 
-The AI agent has access to these powerful tools:
+The AI agent has access to a deliberately small capability surface:
 
-- **`bash`** — Execute a single argv command through the sandbox or, when explicitly allowlisted, through host execution with per-call approval
+- **`codemode`** — Run model-authored TypeScript orchestration code with read-style tools
+- **sandboxed command tool** — Execute one argv command from the in-process `just-bash` builtin registry; no shell parsing and no arbitrary host binaries
 - **`astGrep`** — Structural code search using AST patterns (JavaScript, TypeScript, TSX, HTML, CSS)
-- **`write`** — Create or overwrite project files
-- **`edit`** — Apply precise text replacements to project files
+- **typed `git.*` / `gh.*` capabilities** — Read-only host wrappers for repository and GitHub context
+- **`write`** — Create or overwrite project files as visible top-level mutations
+- **`edit`** — Apply precise text replacements as visible top-level mutations
 
 ### Security Features
 
 - **Mounted project filesystem** — The project is mounted read/write at `/projects/<folder-name>` with root containment
-- **Host execution approval** — Interactive prompts before running allowlisted host commands
+- **Typed host capabilities** — Git and GitHub access goes through fixed-argv wrappers with disabled prompts, timeouts, and output caps
 - **Gitignore-aware** — Respects top-level and nested project ignore patterns
 - **Secret filtering** — Built-in deny lists for sensitive files
 - **Sandbox timeouts** — Tight execution limits and wall-clock timeouts
@@ -172,18 +174,25 @@ The codebase is organized into clear separation of concerns:
 3. `codemode` runs model-authored TypeScript in the configured executor.
 4. The tools exposed to codemode (`bash`, `astGrep`) bridge back to host-side implementations.
 5. Sandbox `bash`, `write`, and `edit` operate through a `MountableFs` with the real project mounted read/write at `/projects/<folder-name>`.
-6. Host-backed `bash` dispatches argv to a real process only when the argv matches `.smoov/config.json` / `.smoov/config.local.json` and the user approves that call.
+6. Typed host capabilities such as `git.*` and `gh.*` invoke fixed argv commands with validation, timeouts, and output caps.
 7. Results stream back to the AI for continuation.
 
 The safety boundary is the capability policy: which tools are exposed where, how they are gated, and how visibly their effects are reported. A mutating capability exposed to codemode could mutate even when the codemode program itself runs in QuickJS.
 
+## Documentation
+
+- [Philosophy](./docs/philosophy.md) — why smoovcode favors typed capabilities over raw shell access
+- [Architecture](./docs/architecture.md) — package layout, execution flow, filesystem model, and executors
+- [Capabilities](./docs/capabilities.md) — current model-facing tools and host wrappers
+- [Capability roadmap](./docs/capability-roadmap.md) — how to add project, Git, and GitHub workflows safely
+
 ## Safety
 
-The agent's sandboxing, host-allowlist, and edit/write semantics are documented in [SECURITY.md](./SECURITY.md).
+The agent's sandboxing, typed host capabilities, and edit/write semantics are documented in [SECURITY.md](./SECURITY.md).
 
 ## Development
 
-This is a Vite+ monorepo using npm workspaces. See [CLAUDE.md](./CLAUDE.md) for detailed toolchain documentation.
+This is a Vite+ monorepo using npm workspaces. See [AGENTS.md](./AGENTS.md) for agent-facing toolchain guidance.
 
 ## License
 

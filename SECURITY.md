@@ -20,17 +20,21 @@ Writes under the project mount update the real working tree immediately. Top-lev
 - Symlink writes are blocked by `write` and `edit`.
 - Gitignore patterns, `.git/info/exclude`, the built-in secret deny list, and `.smoov` secret deny configuration hide protected files and reject protected writes.
 
-## Host-backed commands
+## Host-backed capabilities
 
-Host process execution remains separate from sandbox `bash` and is gated:
+Host process execution remains separate from sandbox `bash` and is currently exposed through typed read-only capabilities such as `git.*` and `gh.*`:
 
-- argv-only command dispatch; no shell parsing,
-- allowlist prefix matching from `.smoov/config.json` / `.smoov/config.local.json`,
-- per-call user approval,
+- fixed argv construction; no shell parsing,
+- schema-validated inputs,
 - `shell: false`,
 - rooted at the real project cwd,
+- prompts and pagers disabled where applicable,
 - timeout and output caps.
+
+Future host-backed write or external capabilities should add explicit user approval and preserve these constraints.
 
 ## Capability boundary
 
-The safety boundary is the capability policy: which tools are exposed, what filesystem they can reach, how host commands are gated, and how visibly effects are reported. Adding a new mutating capability must preserve root containment, ignore/secret filtering, and explicit host approval where real host processes are involved.
+The safety boundary is the capability policy: which tools are exposed, what filesystem they can reach, how host commands are gated, and how visibly effects are reported. Adding a new mutating capability must preserve root containment, ignore/secret filtering, and explicit host approval where real host processes or external systems are involved.
+
+See [docs/philosophy.md](./docs/philosophy.md) and [docs/capabilities.md](./docs/capabilities.md) for the broader tool design model.
