@@ -4,7 +4,7 @@ import { renderBlock } from "./render-block.ts";
 import { formatStatusLine, type SessionStats } from "./status-line.ts";
 
 export type StaticItem =
-  | { kind: "banner"; key: string; text: string }
+  | { kind: "banner"; key: string; lines: string[] }
   | { kind: "user"; key: string; userMessage: string }
   | { kind: "block"; key: string; block: Block };
 
@@ -18,11 +18,17 @@ export class TuiAppModel {
 
   constructor(
     private readonly opts: {
-      banner: string;
+      banner: string | string[];
       stats?: SessionStats;
     },
   ) {
-    this.staticItems = [{ kind: "banner", key: "banner", text: opts.banner }];
+    this.staticItems = [
+      {
+        kind: "banner",
+        key: "banner",
+        lines: Array.isArray(opts.banner) ? opts.banner : [opts.banner],
+      },
+    ];
   }
 
   submit(message: string): void {
@@ -76,7 +82,7 @@ export class TuiAppModel {
     const lines: string[] = [];
     let cursor: { line: number; column: number } | undefined;
     for (const item of [...this.staticItems, ...this.liveItems]) {
-      if (item.kind === "banner") lines.push(item.text);
+      if (item.kind === "banner") lines.push(...item.lines);
       else if (item.kind === "user") lines.push("", `> ${item.userMessage}`);
       else
         lines.push(

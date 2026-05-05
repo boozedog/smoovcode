@@ -9,6 +9,7 @@ import {
   QuickJSExecutor,
 } from "@smoovcode/agent";
 import { TuiApp } from "./app.ts";
+import { renderHeader } from "./header.ts";
 
 function pickExecutor(name: string): Executor {
   switch (name) {
@@ -29,8 +30,9 @@ async function main() {
   const model = process.env.SMOOV_MODEL;
   const executor = pickExecutor(backend);
 
+  const displayModel = model ?? "gpt-5";
   const agent = new Agent({ executor, model, cwd: projectRoot });
-  const banner = `smoovcode (backend: ${executor.name}, root: ${projectRoot}) — ctrl-c to exit`;
+  const banner = renderHeader({ backend: executor.name, root: projectRoot, model: displayModel });
   const agentLike = {
     session: agent.session,
     run: (msg: string, opts?: { signal?: AbortSignal } & AgentRunOptions) => agent.run(msg, opts),
@@ -39,7 +41,7 @@ async function main() {
   const app = new TuiApp({
     agent: agentLike,
     banner,
-    stats: { cwd: projectRoot, model: model ?? "gpt-5" },
+    stats: { cwd: projectRoot, model: displayModel },
   });
 
   process.once("SIGINT", () => {

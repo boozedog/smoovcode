@@ -14,7 +14,7 @@ const KEYBOARD_PROTOCOL_DISABLE = "\u001b[<1u\u001b[>4;0m";
 
 export interface TuiAppOptions {
   agent: AgentLike;
-  banner: string;
+  banner: string | string[];
   stats?: SessionStats;
   stdin?: NodeJS.ReadStream;
   stdout?: NodeJS.WriteStream;
