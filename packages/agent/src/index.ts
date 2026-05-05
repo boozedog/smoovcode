@@ -28,4 +28,10 @@ export { CloudflareExecutor } from "./executors/cloudflare.ts";
 export { LocalExecutor } from "./executors/local.ts";
 export { QuickJSExecutor } from "./executors/quickjs.ts";
 export { createTools } from "./tools.ts";
-export type { AgentTools, CreateToolsOptions } from "./tools.ts";
+export type { AgentTools, CreateToolsOptions, SandboxCommandTool } from "./tools.ts";
+export { SANDBOX_COMMAND_METADATA, sandboxCommandMetadata } from "./sandbox-command-metadata.ts";
+export type {
+  FlowEndpoint,
+  SandboxCommandMetadata,
+  SandboxCommandPolicy,
+} from "./sandbox-command-metadata.ts";

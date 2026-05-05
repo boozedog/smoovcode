@@ -341,9 +341,12 @@ describe("Agent", () => {
     };
     const codemodeProviders = tools.codemode.opts.tools;
     const defaultProvider = codemodeProviders.find((p) => p.name === undefined);
+    const shProvider = codemodeProviders.find((p) => p.name === "sh");
     const ghProvider = codemodeProviders.find((p) => p.name === "gh");
     const gitProvider = codemodeProviders.find((p) => p.name === "git");
     expect(Object.keys(defaultProvider?.tools ?? {}).sort()).toEqual(["astGrep", "bash"]);
+    expect(shProvider?.tools.rg).toBeDefined();
+    expect(shProvider?.tools.rm).toBeUndefined();
     expect(ghProvider?.tools.issue_view).toBeDefined();
     expect(gitProvider?.tools.status).toBeDefined();
     for (const provider of codemodeProviders) {

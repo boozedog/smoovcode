@@ -2,6 +2,10 @@ import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
+import {
+  SANDBOX_COMMAND_METADATA,
+  sandboxCommandMetadata,
+} from "../src/sandbox-command-metadata.ts";
 import { createTools } from "../src/tools.ts";
 
 // AI SDK Tool wraps the original handler in `execute`. Helper to invoke it
@@ -91,6 +95,60 @@ describe("tools.bash", () => {
   test("has a description", () => {
     const { bash } = createTools({ cwd: sandbox });
     expect(bash.description).toMatch(/bash|shell|sandbox|argv/i);
+  });
+});
+
+describe("tools.sh sandbox command provider", () => {
+  let sandbox: string;
+
+  beforeEach(() => {
+    sandbox = mkdtempSync(join(tmpdir(), "smoov-sh-"));
+  });
+
+  afterEach(() => {
+    rmSync(sandbox, { recursive: true, force: true });
+  });
+
+  test("exposes allowed commands with command-specific descriptions", async () => {
+    writeFileSync(join(sandbox, "hello.txt"), "hello\n");
+    const { sh } = createTools({ cwd: sandbox });
+
+    expect(sh.cat.description).toBe(SANDBOX_COMMAND_METADATA.cat.description);
+    expect(sh.cat.sandboxCommand.flow?.sources).toContain("working-tree");
+    const out = (await invoke(sh.cat, { args: ["hello.txt"] })) as { stdout: string };
+    expect(out.stdout).toBe("hello\n");
+  });
+
+  test("accepts null input for no-argument command calls", async () => {
+    const { sh } = createTools({ cwd: sandbox });
+
+    const out = (await invoke(sh.pwd, null)) as { stdout: string };
+    expect(out.stdout).toMatch(/^\/projects\/smoov-sh-/);
+  });
+
+  test("does not expose denied shell/meta commands", () => {
+    const { sh } = createTools({ cwd: sandbox });
+
+    expect(sh.bash).toBeUndefined();
+    expect(sh.sh).toBeUndefined();
+    expect(sandboxCommandMetadata("bash").exposure).toBe("deny");
+  });
+
+  test("does not expose mutation-classified commands as normal read commands", () => {
+    const { sh } = createTools({ cwd: sandbox });
+
+    expect(sh.rm).toBeUndefined();
+    expect(sh.tee).toBeUndefined();
+    expect(SANDBOX_COMMAND_METADATA.rm.exposure).toBe("requires-approval");
+    expect(SANDBOX_COMMAND_METADATA.rm.flow?.sinks).toContain("working-tree");
+    expect(SANDBOX_COMMAND_METADATA.tee.flow?.sinks).toContain("working-tree");
+  });
+
+  test("commands absent from metadata deny conservatively", () => {
+    expect(sandboxCommandMetadata("sqlite3")).toMatchObject({
+      command: "sqlite3",
+      exposure: "deny",
+    });
   });
 });
 

@@ -21,6 +21,10 @@ import {
 import { z } from "zod";
 import { loadSmoovConfig, type SmoovConfig } from "./config.ts";
 import { GitignoreFs, loadIgnorePatterns } from "./gitignore-fs.ts";
+import {
+  SANDBOX_COMMAND_METADATA,
+  type SandboxCommandMetadata,
+} from "./sandbox-command-metadata.ts";
 import { DirtyTrackingFs, type ToolSession } from "./tool-session.ts";
 
 const LANG_NAMES = ["JavaScript", "TypeScript", "Tsx", "Html", "Css"] as const;
@@ -96,6 +100,12 @@ export const DEFAULT_EXEC_TIMEOUT_MS = 30_000;
  * with the underlying library rather than a hardcoded list.
  */
 export const SANDBOX_COMMAND_NAMES: ReadonlySet<string> = new Set(getCommandNames());
+
+export interface SandboxCommandToolMetadata {
+  sandboxCommand: SandboxCommandMetadata;
+}
+
+export type SandboxCommandTool = ReturnType<typeof tool> & SandboxCommandToolMetadata;
 
 const COMMAND_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
 
@@ -214,7 +224,71 @@ export function createTools(opts: CreateToolsOptions = {}) {
     await sessionFs.writeFile(virtualPath(relPath), content);
   }
 
+  async function execSandboxCommand(argv: readonly string[], stdin?: string) {
+    validateArgvShape(argv);
+    const cmd = argv[0];
+
+    if (!SANDBOX_COMMAND_NAMES.has(cmd)) {
+      throw new Error(
+        `bash: '${cmd}' is not available. The bash tool is sandbox-only; use one of the sandbox command capabilities instead.`,
+      );
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), execTimeoutMs);
+    try {
+      const result = await bashEnv.exec(cmd, {
+        args: argv.slice(1),
+        ...(stdin !== undefined ? { stdin } : {}),
+        signal: controller.signal,
+      });
+      return {
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+      };
+    } catch (err) {
+      if (controller.signal.aborted) {
+        return {
+          stdout: "",
+          stderr: `bash: aborted after ${execTimeoutMs}ms wall-clock timeout`,
+          exitCode: 124,
+        };
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  const sh = Object.fromEntries(
+    Object.entries(SANDBOX_COMMAND_METADATA)
+      .filter(([cmd, meta]) => meta.exposure === "allow" && SANDBOX_COMMAND_NAMES.has(cmd))
+      .map(([cmd, meta]) => {
+        const commandTool = tool({
+          description: meta.description,
+          inputSchema: z.preprocess(
+            (value) => value ?? {},
+            z.object({
+              args: z
+                .array(z.string())
+                .optional()
+                .describe("Arguments passed verbatim to the command."),
+              stdin: z.string().optional().describe("Standard input to pass to the command."),
+            }),
+          ),
+          execute: async (input) => {
+            const { args = [], stdin } = input ?? {};
+            return execSandboxCommand([cmd, ...args], stdin);
+          },
+        }) as unknown as SandboxCommandTool;
+        commandTool.sandboxCommand = meta;
+        return [cmd, commandTool];
+      }),
+  ) as Record<string, SandboxCommandTool>;
+
   return {
+    sh,
     bash: tool({
       description:
         "Run a single sandboxed command via argv (no shell parsing). argv[0] must be a sandbox built-in (cat, ls, grep, rg, sed, awk, jq, find, etc.). Cwd is the mounted project directory /projects/<folder-name>; writes under it update the real working tree. Compose pipelines/conditionals in code by calling this tool multiple times.",
@@ -227,42 +301,7 @@ export function createTools(opts: CreateToolsOptions = {}) {
           ),
         stdin: z.string().optional().describe("Standard input to pass to the command."),
       }),
-      execute: async ({ argv, stdin }) => {
-        validateArgvShape(argv);
-        const cmd = argv[0];
-
-        if (!SANDBOX_COMMAND_NAMES.has(cmd)) {
-          throw new Error(
-            `bash: '${cmd}' is not available. The bash tool is sandbox-only; use one of the sandbox command capabilities instead.`,
-          );
-        }
-
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), execTimeoutMs);
-        try {
-          const result = await bashEnv.exec(cmd, {
-            args: argv.slice(1),
-            ...(stdin !== undefined ? { stdin } : {}),
-            signal: controller.signal,
-          });
-          return {
-            stdout: result.stdout,
-            stderr: result.stderr,
-            exitCode: result.exitCode,
-          };
-        } catch (err) {
-          if (controller.signal.aborted) {
-            return {
-              stdout: "",
-              stderr: `bash: aborted after ${execTimeoutMs}ms wall-clock timeout`,
-              exitCode: 124,
-            };
-          }
-          throw err;
-        } finally {
-          clearTimeout(timer);
-        }
-      },
+      execute: async ({ argv, stdin }) => execSandboxCommand(argv, stdin),
     }),
 
     write: tool({
