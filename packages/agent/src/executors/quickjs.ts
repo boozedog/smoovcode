@@ -7,6 +7,7 @@ import { HEADERS_MARKER, loadAsyncQuickJs } from "@sebastianwessel/quickjs";
 const variant = variantModule as unknown as QuickJSAsyncVariant;
 import {
   createEmptyMetrics,
+  type ExecuteNestedToolCall,
   type ExecuteResult,
   type Executor,
   normalizeProviders,
@@ -52,7 +53,12 @@ export class QuickJSExecutor implements Executor {
 
   async execute(code: string, providers: Providers): Promise<ExecuteResult> {
     const metrics = createEmptyMetrics();
-    const resolved = wrapProvidersWithMetrics(normalizeProviders(providers), metrics);
+    const nestedToolCalls: ExecuteNestedToolCall[] = [];
+    const resolved = wrapProvidersWithMetrics(
+      normalizeProviders(providers),
+      metrics,
+      nestedToolCalls,
+    );
     // Flatten to "ns/toolName" -> fn for the bridge URL lookup.
     const flat: Record<string, (args: unknown) => Promise<unknown>> = {};
     for (const p of resolved) {
@@ -119,13 +125,14 @@ export class QuickJSExecutor implements Executor {
       });
 
       if (evalResult.ok) {
-        return { result: evalResult.data, logs, metrics };
+        return { result: evalResult.data, logs, metrics, nestedToolCalls };
       }
       return {
         result: undefined,
         error: `${evalResult.error.name}: ${evalResult.error.message}`,
         logs,
         metrics,
+        nestedToolCalls,
       };
     } catch (err) {
       return {
@@ -133,6 +140,7 @@ export class QuickJSExecutor implements Executor {
         error: err instanceof Error ? err.message : String(err),
         logs,
         metrics,
+        nestedToolCalls,
       };
     }
   }

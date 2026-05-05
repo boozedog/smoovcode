@@ -4,11 +4,22 @@ export interface ExecuteMetrics {
   toolOutputBytes: number;
 }
 
+export interface ExecuteNestedToolCall {
+  id: string;
+  provider: string;
+  name: string;
+  status: "done" | "error";
+  inputBytes: number;
+  outputBytes?: number;
+  error?: string;
+}
+
 export interface ExecuteResult {
   result: unknown;
   error?: string;
   logs?: string[];
   metrics?: ExecuteMetrics;
+  nestedToolCalls?: ExecuteNestedToolCall[];
 }
 
 export type ToolFns = Record<string, (...args: unknown[]) => Promise<unknown>>;
@@ -54,6 +65,7 @@ export function createEmptyMetrics(): ExecuteMetrics {
 export function wrapProvidersWithMetrics(
   providers: ResolvedProvider[],
   metrics: ExecuteMetrics,
+  nestedToolCalls: ExecuteNestedToolCall[] = [],
 ): ResolvedProvider[] {
   return providers.map((provider) => ({
     ...provider,
@@ -61,11 +73,28 @@ export function wrapProvidersWithMetrics(
       Object.entries(provider.fns).map(([name, fn]) => [
         name,
         async (...args: unknown[]) => {
+          const inputBytes = serializedByteLength(args.length === 1 ? args[0] : args);
+          const call: ExecuteNestedToolCall = {
+            id: `${nestedToolCalls.length}`,
+            provider: provider.name,
+            name,
+            status: "done",
+            inputBytes,
+          };
+          nestedToolCalls.push(call);
           metrics.toolCalls += 1;
-          metrics.toolInputBytes += serializedByteLength(args.length === 1 ? args[0] : args);
-          const result = await fn(...args);
-          metrics.toolOutputBytes += serializedByteLength(result);
-          return result;
+          metrics.toolInputBytes += inputBytes;
+          try {
+            const result = await fn(...args);
+            const outputBytes = serializedByteLength(result);
+            metrics.toolOutputBytes += outputBytes;
+            call.outputBytes = outputBytes;
+            return result;
+          } catch (err) {
+            call.status = "error";
+            call.error = err instanceof Error ? err.message : String(err);
+            throw err;
+          }
         },
       ]),
     ),

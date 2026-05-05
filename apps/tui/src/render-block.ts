@@ -74,8 +74,10 @@ function renderCodemode(
   input: { code: string },
   expanded: boolean,
 ): string[] {
+  const nestedToolCalls = extractNestedToolCalls(block.output);
   const metrics = extractMetrics(block.output);
-  const toolCalls = metrics?.toolCalls ?? countCodemodeToolCalls(input.code);
+  const toolCalls =
+    nestedToolCalls?.length ?? metrics?.toolCalls ?? countCodemodeToolCalls(input.code);
   const metadata = [`${toolCalls} call${toolCalls === 1 ? "" : "s"}`];
   metadata.push(`${formatBytes(byteLength(input.code))} in`);
   if (block.status === "done") metadata.push(`${formatBytes(byteLength(block.output))} out`);
@@ -130,7 +132,7 @@ function renderEdit(
 }
 
 function countCodemodeToolCalls(code: string): number {
-  const calls = code.match(/\b(?:codemode|gh|git)\.[A-Za-z_$][\w$]*\s*\(/g);
+  const calls = code.match(/\b[A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*\s*\(/g);
   return calls?.length ?? 0;
 }
 
@@ -163,6 +165,14 @@ function truncateLargeStrings(value: unknown): unknown {
 
 function extractResult(o: unknown): unknown {
   return o && typeof o === "object" && "result" in o ? (o as { result: unknown }).result : o;
+}
+
+function extractNestedToolCalls(o: unknown): unknown[] | null {
+  if (o && typeof o === "object" && "nestedToolCalls" in o) {
+    const nestedToolCalls = (o as { nestedToolCalls: unknown }).nestedToolCalls;
+    if (Array.isArray(nestedToolCalls)) return nestedToolCalls;
+  }
+  return null;
 }
 
 function extractMetrics(o: unknown): { toolCalls: number } | null {

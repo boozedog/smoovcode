@@ -61,7 +61,7 @@ describe("ANSI formatting", () => {
     expect(output).not.toContain("4 lines");
   });
 
-  test("codemode summary counts host capability calls", () => {
+  test("codemode fallback summary counts provider calls without hardcoded namespaces", () => {
     const block: Block = {
       kind: "tool-call",
       id: "b-0-0",
@@ -81,6 +81,27 @@ describe("ANSI formatting", () => {
     const output = stripAnsi(renderBlock(block).join("\n"));
 
     expect(output).toContain("▶ [codemode] 2 calls");
+  });
+
+  test("codemode summary prefers structured nested call records when present", () => {
+    const block: Block = {
+      kind: "tool-call",
+      id: "b-0-0",
+      name: "codemode",
+      input: { code: "async () => await unknownProvider.call({})" },
+      status: "done",
+      output: {
+        result: "ok",
+        metrics: { toolCalls: 99 },
+        nestedToolCalls: [
+          { provider: "foo", name: "bar", status: "done" },
+          { provider: "sh", name: "pwd", status: "done" },
+          { provider: "git", name: "status", status: "done" },
+        ],
+      },
+    };
+
+    expect(stripAnsi(renderBlock(block).join("\n"))).toContain("▶ [codemode] 3 calls");
   });
 
   test("codemode summary prefers executor metrics when present", () => {

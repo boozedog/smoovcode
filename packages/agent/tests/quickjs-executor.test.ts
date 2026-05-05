@@ -52,6 +52,10 @@ describe("QuickJSExecutor", () => {
     expect(r.metrics?.toolCalls).toBe(2);
     expect(r.metrics?.toolInputBytes).toBeGreaterThan(0);
     expect(r.metrics?.toolOutputBytes).toBeGreaterThan(0);
+    expect(r.nestedToolCalls).toMatchObject([
+      { id: "0", provider: "codemode", name: "echo", status: "done" },
+      { id: "1", provider: "codemode", name: "ping", status: "done" },
+    ]);
   });
 
   test("supports multiple namespaces", async () => {

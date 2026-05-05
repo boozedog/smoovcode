@@ -1,5 +1,6 @@
 import {
   createEmptyMetrics,
+  type ExecuteNestedToolCall,
   type ExecuteResult,
   type Executor,
   normalizeProviders,
@@ -20,7 +21,12 @@ export class LocalExecutor implements Executor {
     };
 
     const metrics = createEmptyMetrics();
-    const resolved = wrapProvidersWithMetrics(normalizeProviders(providers), metrics);
+    const nestedToolCalls: ExecuteNestedToolCall[] = [];
+    const resolved = wrapProvidersWithMetrics(
+      normalizeProviders(providers),
+      metrics,
+      nestedToolCalls,
+    );
     const namespaceNames = resolved.map((p) => p.name);
     const namespaceObjs = resolved.map((p) => p.fns);
 
@@ -33,13 +39,14 @@ export class LocalExecutor implements Executor {
           setTimeout(() => reject(new Error(`executor timeout after ${timeoutMs}ms`)), timeoutMs),
         ),
       ]);
-      return { result, logs, metrics };
+      return { result, logs, metrics, nestedToolCalls };
     } catch (err) {
       return {
         result: undefined,
         error: err instanceof Error ? err.message : String(err),
         logs,
         metrics,
+        nestedToolCalls,
       };
     }
   }
