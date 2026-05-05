@@ -10,6 +10,7 @@ import {
 } from "@smoovcode/agent";
 import { TuiApp } from "./app.ts";
 import { renderHeader } from "./header.ts";
+import { contextWindowForModel } from "./status-line.ts";
 
 function pickExecutor(name: string): Executor {
   switch (name) {
@@ -45,7 +46,11 @@ async function main() {
   const app = new TuiApp({
     agent: agentLike,
     banner,
-    stats: { cwd: projectRoot, model: displayModel },
+    stats: {
+      cwd: projectRoot,
+      model: displayModel,
+      contextWindow: contextWindowForModel(displayModel),
+    },
   });
 
   process.once("SIGINT", () => {

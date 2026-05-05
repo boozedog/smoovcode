@@ -1,7 +1,7 @@
-import type { Block } from "@smoovcode/ui-core";
+import type { Block, TokenUsage } from "@smoovcode/ui-core";
 import { PromptModel } from "./prompt-model.ts";
 import { renderBlock } from "./render-block.ts";
-import { formatStatusLine, type SessionStats } from "./status-line.ts";
+import { contextWindowForModel, formatStatusLine, type SessionStats } from "./status-line.ts";
 
 export type StaticItem =
   | { kind: "banner"; key: string; lines: string[] }
@@ -16,13 +16,13 @@ export class TuiAppModel {
   keyCounter = 0;
   expandedCodemodeIds = new Set<string>();
   expandedReasoningIds = new Set<string>();
+  private readonly stats?: SessionStats;
 
-  constructor(
-    private readonly opts: {
-      banner: string | string[];
-      stats?: SessionStats;
-    },
-  ) {
+  constructor(opts: { banner: string | string[]; stats?: SessionStats }) {
+    this.stats = opts.stats ? { ...opts.stats } : undefined;
+    if (this.stats?.contextWindow === undefined && this.stats?.model) {
+      this.stats.contextWindow = contextWindowForModel(this.stats.model);
+    }
     this.staticItems = [
       {
         kind: "banner",
@@ -54,6 +54,12 @@ export class TuiAppModel {
   finishTurn(): void {
     this.liveItems = [];
     this.pendingMessage = null;
+  }
+
+  addUsage(usage: TokenUsage): void {
+    if (!this.stats) return;
+    this.stats.inputTokens = (this.stats.inputTokens ?? 0) + usage.inputTokens;
+    this.stats.outputTokens = (this.stats.outputTokens ?? 0) + usage.outputTokens;
   }
 
   addError(err: unknown): void {
@@ -127,7 +133,7 @@ export class TuiAppModel {
       };
     }
 
-    const status = renderStatus(this.opts.stats);
+    const status = renderStatus(this.stats);
     if (status) lines.push(...status.split("\n"));
 
     return { lines, ...(cursor ? { cursor } : {}) };

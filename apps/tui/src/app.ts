@@ -106,6 +106,7 @@ export class TuiApp {
     const runner = new AgentRunner(this.opts.agent, message, {
       onBlockFinalize: (block, turnId) => this.model.addBlock(block, `b-${turnId}-${block.id}`),
       onLiveTextChange: (blocks, turnId) => this.model.setLiveBlocks(blocks, turnId),
+      onUsage: (usage) => this.model.addUsage(usage),
       onDone: () => {
         this.model.finishTurn();
         if (this.spinnerTimer) clearInterval(this.spinnerTimer);
