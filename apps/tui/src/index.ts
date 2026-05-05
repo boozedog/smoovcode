@@ -35,7 +35,11 @@ async function main() {
   const banner = renderHeader({ backend: executor.name, root: projectRoot, model: displayModel });
   const agentLike = {
     session: agent.session,
-    run: (msg: string, opts?: { signal?: AbortSignal } & AgentRunOptions) => agent.run(msg, opts),
+    run: async function* (msg: string, opts?: { signal?: AbortSignal } & AgentRunOptions) {
+      for await (const event of agent.run(msg, opts)) {
+        if (event.type !== "debug") yield event;
+      }
+    },
   };
 
   const app = new TuiApp({

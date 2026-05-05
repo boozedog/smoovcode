@@ -21,7 +21,7 @@ describe("renderHeader", () => {
       "backend  quickjs",
       "root     /tmp/smoovcode",
       "model    gpt-5",
-      "keys     ctrl-c exit · ctrl-o expand codemode",
+      "keys     ctrl-c exit · ctrl-o expand codemode · ctrl-r expand thinking",
     ]);
     expect(lines[5]).toContain("\u001b[2m");
   });

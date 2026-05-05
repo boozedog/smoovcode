@@ -15,6 +15,7 @@ export class TuiAppModel {
   pendingMessage: string | null = null;
   keyCounter = 0;
   expandedCodemodeIds = new Set<string>();
+  expandedReasoningIds = new Set<string>();
 
   constructor(
     private readonly opts: {
@@ -72,11 +73,24 @@ export class TuiAppModel {
     this.expandedCodemodeIds = allExpanded ? new Set() : new Set(codemodeIds);
   }
 
+  toggleReasoningExpansion(): void {
+    const reasoningIds = this.currentReasoningBlockIds();
+    const allExpanded =
+      reasoningIds.length > 0 && reasoningIds.every((id) => this.expandedReasoningIds.has(id));
+    this.expandedReasoningIds = allExpanded ? new Set() : new Set(reasoningIds);
+  }
+
   private currentCodemodeBlockIds(): string[] {
     return [...this.staticItems, ...this.liveItems].flatMap((item) =>
       item.kind === "block" && item.block.kind === "tool-call" && item.block.name === "codemode"
         ? [item.block.id]
         : [],
+    );
+  }
+
+  private currentReasoningBlockIds(): string[] {
+    return [...this.staticItems, ...this.liveItems].flatMap((item) =>
+      item.kind === "block" && item.block.kind === "reasoning" ? [item.block.id] : [],
     );
   }
 
@@ -94,6 +108,7 @@ export class TuiAppModel {
           "",
           ...renderBlock(item.block, {
             expandedCodemode: this.expandedCodemodeIds.has(item.block.id),
+            expandedReasoning: this.expandedReasoningIds.has(item.block.id),
           }),
         );
     }

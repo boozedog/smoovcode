@@ -4,12 +4,15 @@ import { getHighlighted } from "./highlight-cache.ts";
 
 export type Lang = "ts" | "js" | "json" | "md" | "go";
 
-export function renderBlock(block: Block, opts: { expandedCodemode?: boolean } = {}): string[] {
+export function renderBlock(
+  block: Block,
+  opts: { expandedCodemode?: boolean; expandedReasoning?: boolean } = {},
+): string[] {
   switch (block.kind) {
     case "text":
       return (getHighlighted(block.text, "md") ?? block.text).split("\n");
     case "reasoning":
-      return [ansi.dim(`thinking: ${block.text}`)];
+      return renderReasoning(block, opts.expandedReasoning === true);
     case "tool-call":
       return renderToolCall(block, opts.expandedCodemode === true);
     case "error":
@@ -54,6 +57,16 @@ export function inferLangFromPath(path: string): Lang | null {
   if (ext === "md" || ext === "mdx") return "md";
   if (ext === "go") return "go";
   return null;
+}
+
+function renderReasoning(
+  block: Extract<Block, { kind: "reasoning" }>,
+  expanded: boolean,
+): string[] {
+  const glyph = expanded || block.status === "streaming" ? "▼" : "▶";
+  const summary = ansi.dim(`${glyph} [thinking] ${formatBytes(byteLength(block.text))}`);
+  if (!expanded && block.status !== "streaming") return [summary];
+  return [summary, ...block.text.split("\n").map((line) => ansi.dim(line))];
 }
 
 function renderToolCall(block: ToolCallBlock, expandedCodemode: boolean): string[] {

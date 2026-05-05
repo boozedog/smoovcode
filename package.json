@@ -10,7 +10,7 @@
   "type": "module",
   "scripts": {
     "ready": "vp check && vp run -r test && vp run -r build",
-    "cli": "npm run dev -w smoov-cli",
+    "cli": "npm run dev -w smoov-cli --",
     "tui": "npm run dev -w smoov-tui",
     "prepare": "vp config"
   },

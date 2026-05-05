@@ -24,12 +24,14 @@ type ScriptedEvent =
   | { type: "tool-call"; name: string; input: unknown }
   | { type: "tool-result"; name: string; output: unknown }
   | { type: "tool-error"; name: string; error: string }
-  | { type: "error"; error: string };
+  | { type: "error"; error: string }
+  | { type: "debug"; label: string; data: unknown };
 
 let scriptedEventsByTurn: ScriptedEvent[][] = [];
 let agentThrowOn: number | undefined;
 let agentThrowValue: unknown = new Error("agent-failure");
 const agentRunCalls: string[] = [];
+const agentRunOptions: unknown[] = [];
 const agentConstructorOpts: unknown[] = [];
 
 vi.mock("@smoovcode/agent", () => {
@@ -39,8 +41,9 @@ vi.mock("@smoovcode/agent", () => {
       constructor(public opts: unknown) {
         agentConstructorOpts.push(opts);
       }
-      async *run(msg: string) {
+      async *run(msg: string, opts?: unknown) {
         agentRunCalls.push(msg);
+        agentRunOptions.push(opts);
         const idx = this.turn++;
         if (agentThrowOn === idx) throw agentThrowValue;
         const events = scriptedEventsByTurn[idx] ?? [];
@@ -71,6 +74,7 @@ describe("runLoop", () => {
     agentThrowOn = undefined;
     agentThrowValue = new Error("agent-failure");
     agentRunCalls.length = 0;
+    agentRunOptions.length = 0;
     agentConstructorOpts.length = 0;
     readlineMocks.rlClose.mockClear();
     readlineMocks.createInterface.mockClear();
@@ -97,6 +101,13 @@ describe("runLoop", () => {
     expect(writes.join("")).toMatch(/smoovcode \(backend: stub, root: .+\) — ctrl-d to exit/);
   });
 
+  test("prints verbose mode in the banner when enabled", async () => {
+    await runLoop(stubExecutor, undefined, { verbose: true });
+    expect(writes.join("")).toMatch(
+      /smoovcode \(backend: stub, root: .+, verbose: true\) — ctrl-d to exit/,
+    );
+  });
+
   test("keeps one rudimentary readline interface open for CLI input", async () => {
     await runLoop(stubExecutor);
     expect(readlineMocks.createInterface).toHaveBeenCalledTimes(1);
@@ -108,6 +119,13 @@ describe("runLoop", () => {
     scriptedEventsByTurn = [[], []];
     await runLoop(stubExecutor);
     expect(agentRunCalls).toEqual(["hello", "second"]);
+  });
+
+  test("always asks the agent to show reasoning in CLI mode", async () => {
+    scriptedAnswers = ["hello"];
+    scriptedEventsByTurn = [[]];
+    await runLoop(stubExecutor);
+    expect(agentRunOptions).toEqual([{ showReasoning: true }]);
   });
 
   test("skips empty / whitespace-only input without calling the agent", async () => {
@@ -196,6 +214,31 @@ describe("runLoop", () => {
     scriptedEventsByTurn = [[{ type: "error", error: "oops" }]];
     await runLoop(stubExecutor);
     expect(writes.join("")).toContain("[error] oops");
+  });
+
+  test("passes verbose mode to agent.run and renders debug records as JSON", async () => {
+    scriptedAnswers = ["hi"];
+    scriptedEventsByTurn = [
+      [
+        { type: "debug", label: "raw-stream-part", data: { type: "tool-call", toolCallId: "c1" } },
+        { type: "text", delta: "done" },
+      ],
+    ];
+    await runLoop(stubExecutor, undefined, { verbose: true });
+    const out = writes.join("");
+    expect(agentRunOptions).toEqual([{ showReasoning: true, verbose: true }]);
+    expect(out).toContain(`[raw-stream-part] {\n`);
+    expect(out).toContain(`"toolCallId": "c1"`);
+    expect(out).toContain("done");
+  });
+
+  test("default mode does not render debug records or pass verbose", async () => {
+    scriptedAnswers = ["hi"];
+    scriptedEventsByTurn = [[{ type: "debug", label: "raw-stream-part", data: { secret: true } }]];
+    await runLoop(stubExecutor);
+    expect(agentRunOptions).toEqual([{ showReasoning: true }]);
+    expect(writes.join("")).not.toContain("raw-stream-part");
+    expect(writes.join("")).not.toContain("secret");
   });
 
   test("recovers from an agent throw and continues to the next prompt", async () => {

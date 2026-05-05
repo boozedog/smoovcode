@@ -74,4 +74,29 @@ describe("TuiAppModel", () => {
 
     expect(model.renderLines().join("\n")).toContain("return 'current'");
   });
+
+  test("ctrl-r toggles all reasoning transcript blocks", () => {
+    const model = new TuiAppModel({ banner: "banner" });
+    model.addBlock({ kind: "reasoning", id: "r1", text: "hidden thought", status: "done" });
+
+    expect(model.renderLines().join("\n")).not.toContain("hidden thought");
+
+    model.toggleReasoningExpansion();
+    expect(model.renderLines().join("\n")).toContain("hidden thought");
+
+    model.toggleReasoningExpansion();
+    expect(model.renderLines().join("\n")).not.toContain("hidden thought");
+  });
+
+  test("ctrl-r toggles live reasoning blocks", () => {
+    const model = new TuiAppModel({ banner: "banner" });
+    model.setLiveBlocks(
+      [{ kind: "reasoning", id: "live-r", text: "live thought", status: "done" }],
+      1,
+    );
+
+    model.toggleReasoningExpansion();
+
+    expect(model.renderLines().join("\n")).toContain("live thought");
+  });
 });

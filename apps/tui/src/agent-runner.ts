@@ -46,7 +46,7 @@ export class AgentRunner {
         type: "turn-start",
         userMessage: this.message,
       });
-      for await (const event of this.agent.run(this.message, { signal })) {
+      for await (const event of this.agent.run(this.message, { signal, showReasoning: true })) {
         this.state = reduceConversation(this.state, event);
         if (event.type === "usage")
           this.callbacks.onUsage?.({
@@ -88,7 +88,9 @@ export class AgentRunner {
     this.callbacks.onLiveTextChange(
       turn.blocks.filter(
         (block) =>
-          block.kind === "text" && block.status === "streaming" && !this.emitted.has(block.id),
+          (block.kind === "text" || block.kind === "reasoning") &&
+          block.status === "streaming" &&
+          !this.emitted.has(block.id),
       ),
       turn.id,
     );

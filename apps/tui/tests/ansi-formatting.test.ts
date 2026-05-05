@@ -29,13 +29,29 @@ describe("ANSI formatting", () => {
     expect(stripAnsi(output)).toContain("[edit] src/foo.ts");
   });
 
-  test("renders errors in red and reasoning dim", () => {
+  test("renders errors in red and reasoning as a collapsed dim block", () => {
     expect(
       renderBlock({ kind: "error", id: "e", error: "boom", status: "done" }).join("\n"),
     ).toContain(`${ESC}31m[error] boom${ESC}39m`);
-    expect(
-      renderBlock({ kind: "reasoning", id: "r", text: "consider", status: "done" }).join("\n"),
-    ).toContain(`${ESC}2mthinking: consider${ESC}22m`);
+    const output = renderBlock({
+      kind: "reasoning",
+      id: "r",
+      text: "consider",
+      status: "done",
+    }).join("\n");
+    expect(stripAnsi(output)).toContain("▶ [thinking] 8 B");
+    expect(stripAnsi(output)).not.toContain("consider");
+    expect(output).toContain(`${ESC}2m`);
+  });
+
+  test("renders expanded reasoning text in a dim block", () => {
+    const output = renderBlock(
+      { kind: "reasoning", id: "r", text: "consider\nthen answer", status: "done" },
+      { expandedReasoning: true },
+    ).join("\n");
+    expect(stripAnsi(output)).toContain("▼ [thinking] 20 B");
+    expect(stripAnsi(output)).toContain("consider\nthen answer");
+    expect(output).toContain(`${ESC}2m`);
   });
 
   test("codemode summary shows nested tool-call count instead of source line count", () => {

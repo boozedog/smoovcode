@@ -89,6 +89,10 @@ export class TuiApp {
       this.model.toggleCodemodeExpansion();
       return;
     }
+    if (key.ctrl && key.name === "r") {
+      this.model.toggleReasoningExpansion();
+      return;
+    }
     if (this.model.pendingMessage === null) {
       this.model.prompt.handleKey(key, (message) => this.submit(message));
     }

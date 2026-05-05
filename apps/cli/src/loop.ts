@@ -16,14 +16,32 @@ interface RenderState {
   inReasoning: boolean;
 }
 
+export interface RunLoopOptions {
+  verbose?: boolean;
+}
+
 function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
 function renderEvent(
   state: RenderState,
-  event: ConversationEvent,
+  event:
+    | ConversationEvent
+    | { type: "debug"; label: string; data: unknown }
+    | { type: "usage"; inputTokens: number; outputTokens: number },
+  options: RunLoopOptions = {},
 ): { write: string; next: RenderState } {
+  if (event.type === "debug") {
+    return {
+      write: options.verbose ? `\n[${event.label}] ${formatJson(event.data)}\n` : "",
+      next: state,
+    };
+  }
+  if (event.type === "usage") {
+    return { write: "", next: state };
+  }
+
   const conversation = reduceConversation(state.conversation, event);
   let write = "";
   let inReasoning = state.inReasoning;
@@ -61,13 +79,16 @@ function renderEvent(
   return { write, next: { conversation, inReasoning } };
 }
 
-export async function runLoop(executor: Executor, model?: string) {
+export async function runLoop(executor: Executor, model?: string, options: RunLoopOptions = {}) {
   const rl = readline.createInterface({ input: stdin, output: stdout });
   const projectRoot = findProjectRoot(process.cwd());
 
   const agent = new Agent({ executor, model, cwd: projectRoot });
 
-  stdout.write(`smoovcode (backend: ${executor.name}, root: ${projectRoot}) — ctrl-d to exit\n`);
+  const mode = options.verbose ? ", verbose: true" : "";
+  stdout.write(
+    `smoovcode (backend: ${executor.name}, root: ${projectRoot}${mode}) — ctrl-d to exit\n`,
+  );
 
   let render: RenderState = { conversation: initialConversation, inReasoning: false };
 
@@ -76,17 +97,20 @@ export async function runLoop(executor: Executor, model?: string) {
       const msg = await rl.question("\n> ");
       if (!msg.trim()) continue;
 
-      const started = renderEvent(render, { type: "turn-start", userMessage: msg });
+      const started = renderEvent(render, { type: "turn-start", userMessage: msg }, options);
       render = started.next;
       if (started.write) stdout.write(started.write);
 
       try {
-        for await (const event of agent.run(msg)) {
-          const step = renderEvent(render, event);
+        for await (const event of agent.run(msg, {
+          showReasoning: true,
+          ...(options.verbose ? { verbose: true } : {}),
+        })) {
+          const step = renderEvent(render, event, options);
           render = step.next;
           if (step.write) stdout.write(step.write);
         }
-        const ended = renderEvent(render, { type: "turn-end" });
+        const ended = renderEvent(render, { type: "turn-end" }, options);
         render = ended.next;
         if (ended.write) stdout.write(ended.write);
       } catch (err) {

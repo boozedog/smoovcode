@@ -42,7 +42,10 @@ export interface AgentOptions {
   session?: ToolSession;
 }
 
-export interface AgentRunOptions {}
+export interface AgentRunOptions {
+  verbose?: boolean;
+  showReasoning?: boolean;
+}
 
 export type AgentEvent =
   | { type: "text"; delta: string }
@@ -51,7 +54,8 @@ export type AgentEvent =
   | { type: "tool-result"; name: string; output: unknown }
   | { type: "tool-error"; name: string; error: string }
   | { type: "usage"; inputTokens: number; outputTokens: number }
-  | { type: "error"; error: string };
+  | { type: "error"; error: string }
+  | { type: "debug"; label: string; data: unknown };
 
 export class Agent {
   private readonly history: ModelMessage[] = [];
@@ -62,7 +66,7 @@ export class Agent {
       opts.session ?? createToolSession(opts.cwd !== undefined ? { cwd: opts.cwd } : {});
   }
 
-  async *run(userMessage: string, _runOpts?: AgentRunOptions): AsyncGenerator<AgentEvent> {
+  async *run(userMessage: string, runOpts: AgentRunOptions = {}): AsyncGenerator<AgentEvent> {
     this.history.push({ role: "user", content: userMessage });
 
     const cwd = this.opts.cwd ?? process.cwd();
@@ -92,19 +96,29 @@ export class Agent {
 
     const apiMode = await resolveApiMode();
     const modelId = this.opts.model ?? "gpt-5";
+    const showReasoning = runOpts.verbose === true || runOpts.showReasoning === true;
     const result = streamText({
       model: apiMode === "responses" ? provider.responses(modelId) : provider.chat(modelId),
-      providerOptions: { openai: { store: !isZdr() } },
+      providerOptions: {
+        openai: {
+          store: !isZdr(),
+          ...(showReasoning ? { reasoningSummary: "auto" } : {}),
+        },
+      },
       system,
       messages: this.history,
       tools,
       stopWhen: stepCountIs(30),
+      includeRawChunks: showReasoning,
     });
 
     let assistantText = "";
     let finishReason: string | undefined;
     let stepCount = 0;
     for await (const part of result.fullStream) {
+      if (runOpts.verbose) {
+        yield { type: "debug", label: "raw-stream-part", data: part };
+      }
       if (process.env.SMOOV_DEBUG) {
         if (part.type === "start-step") {
           const body = (part as { request?: { body?: unknown } }).request?.body;
@@ -114,10 +128,14 @@ export class Agent {
         }
       }
       if (part.type === "text-delta") {
-        assistantText += part.text;
-        yield { type: "text", delta: part.text };
+        const delta = getStreamDelta(part);
+        assistantText += delta;
+        yield { type: "text", delta };
       } else if (part.type === "reasoning-delta") {
-        yield { type: "reasoning", delta: part.text };
+        yield { type: "reasoning", delta: getStreamDelta(part) };
+      } else if (part.type === "raw") {
+        const reasoning = extractRawReasoning(part.rawValue);
+        if (reasoning) yield { type: "reasoning", delta: reasoning };
       } else if (part.type === "tool-call") {
         yield { type: "tool-call", name: part.toolName, input: part.input };
       } else if (part.type === "tool-result") {
@@ -158,6 +176,29 @@ export class Agent {
 
     this.history.push({ role: "assistant", content: assistantText });
   }
+}
+
+function getStreamDelta(part: { text?: string; delta?: string }): string {
+  return part.delta ?? part.text ?? "";
+}
+
+function extractRawReasoning(rawValue: unknown): string {
+  if (!isRecord(rawValue)) return "";
+  const choices = rawValue.choices;
+  if (!Array.isArray(choices)) return "";
+  return choices.map(extractChoiceReasoning).filter(Boolean).join("");
+}
+
+function extractChoiceReasoning(choice: unknown): string {
+  if (!isRecord(choice)) return "";
+  const delta = choice.delta;
+  if (!isRecord(delta)) return "";
+  const reasoning = delta.reasoning_content ?? delta.reasoningContent;
+  return typeof reasoning === "string" ? reasoning : "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function explainSilentFinish(finishReason: string, stepCount: number): string {

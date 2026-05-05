@@ -20,6 +20,6 @@ export function renderHeader(info: HeaderInfo): string[] {
     ansi.dim(`backend  ${info.backend}`),
     ansi.dim(`root     ${info.root}`),
     ansi.dim(`model    ${info.model}`),
-    ansi.dim("keys     ctrl-c exit · ctrl-o expand codemode"),
+    ansi.dim("keys     ctrl-c exit · ctrl-o expand codemode · ctrl-r expand thinking"),
   ];
 }

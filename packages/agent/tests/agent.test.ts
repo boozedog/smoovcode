@@ -2,18 +2,24 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/tes
 
 // Capture the args streamText was called with so each test can assert wiring.
 type StreamPart =
-  | { type: "text-delta"; text: string }
-  | { type: "reasoning-delta"; text: string }
+  | { type: "text-delta"; text?: string; delta?: string }
+  | { type: "reasoning-delta"; text?: string; delta?: string }
   | { type: "tool-call"; toolName: string; input: unknown }
   | { type: "tool-result"; toolName: string; output: unknown }
   | { type: "tool-error"; toolName: string; error: unknown }
   | { type: "error"; error: unknown }
-  | { type: "start-step" }
-  | { type: "finish-step"; usage?: { inputTokens?: number; outputTokens?: number } }
+  | { type: "raw"; rawValue: unknown }
+  | { type: "start-step"; request?: { body?: unknown } }
+  | {
+      type: "finish-step";
+      usage?: { inputTokens?: number; outputTokens?: number };
+      providerMetadata?: unknown;
+    }
   | {
       type: "finish";
       finishReason: string;
       totalUsage?: { inputTokens?: number; outputTokens?: number };
+      providerMetadata?: unknown;
     };
 
 let lastStreamArgs: Record<string, unknown> | undefined;
@@ -99,8 +105,8 @@ describe("Agent", () => {
 
   test("yields a text event for each text-delta", async () => {
     nextStreamParts = [
-      { type: "text-delta", text: "hello " },
-      { type: "text-delta", text: "world" },
+      { type: "text-delta", delta: "hello " },
+      { type: "text-delta", delta: "world" },
     ];
     const agent = new Agent({ executor: stubExecutor });
     const events = await collect(agent.run("hi"));
@@ -110,9 +116,15 @@ describe("Agent", () => {
     ]);
   });
 
+  test("supports legacy text fields on text-delta stream parts", async () => {
+    nextStreamParts = [{ type: "text-delta", text: "hello" }];
+    const events = await collect(new Agent({ executor: stubExecutor }).run("hi"));
+    expect(events).toEqual([{ type: "text", delta: "hello" }]);
+  });
+
   test("forwards reasoning, tool-call, tool-result, tool-error, error events", async () => {
     nextStreamParts = [
-      { type: "reasoning-delta", text: "thinking..." },
+      { type: "reasoning-delta", delta: "thinking..." },
       { type: "tool-call", toolName: "echo", input: { text: "x" } },
       { type: "tool-result", toolName: "echo", output: { echoed: "x" } },
       { type: "tool-error", toolName: "echo", error: new Error("oops") },
@@ -149,6 +161,39 @@ describe("Agent", () => {
     expect(events).toEqual([]);
   });
 
+  test("emits raw debug events when verbose run option is enabled", async () => {
+    nextStreamParts = [
+      { type: "tool-call", toolName: "echo", input: { text: "x" } },
+      { type: "tool-result", toolName: "echo", output: { echoed: "x" } },
+      { type: "tool-error", toolName: "echo", error: "bad" },
+      {
+        type: "finish",
+        finishReason: "stop",
+        totalUsage: { inputTokens: 1, outputTokens: 2 },
+        providerMetadata: { provider: "meta" },
+      },
+    ];
+    const events = await collect(
+      new Agent({ executor: stubExecutor }).run("hi", { verbose: true }),
+    );
+    expect(events).toEqual([
+      { type: "debug", label: "raw-stream-part", data: nextStreamParts[0] },
+      { type: "tool-call", name: "echo", input: { text: "x" } },
+      { type: "debug", label: "raw-stream-part", data: nextStreamParts[1] },
+      { type: "tool-result", name: "echo", output: { echoed: "x" } },
+      { type: "debug", label: "raw-stream-part", data: nextStreamParts[2] },
+      { type: "tool-error", name: "echo", error: "bad" },
+      { type: "debug", label: "raw-stream-part", data: nextStreamParts[3] },
+      { type: "usage", inputTokens: 1, outputTokens: 2 },
+    ]);
+  });
+
+  test("does not emit raw debug events by default", async () => {
+    nextStreamParts = [{ type: "tool-call", toolName: "echo", input: { text: "x" } }];
+    const events = await collect(new Agent({ executor: stubExecutor }).run("hi"));
+    expect(events).toEqual([{ type: "tool-call", name: "echo", input: { text: "x" } }]);
+  });
+
   test("emits an error when the stream ends with no text and finishReason='tool-calls' (step-limit punt)", async () => {
     nextStreamParts = [
       { type: "start-step" },
@@ -183,7 +228,7 @@ describe("Agent", () => {
 
   test("does not emit an extra error when the stream produced text", async () => {
     nextStreamParts = [
-      { type: "text-delta", text: "all done" },
+      { type: "text-delta", delta: "all done" },
       { type: "finish", finishReason: "tool-calls" },
     ];
     const events = await collect(new Agent({ executor: stubExecutor }).run("hi"));
@@ -199,11 +244,11 @@ describe("Agent", () => {
   test("appends user and assistant messages to history across turns", async () => {
     const agent = new Agent({ executor: stubExecutor });
 
-    nextStreamParts = [{ type: "text-delta", text: "a1" }];
+    nextStreamParts = [{ type: "text-delta", delta: "a1" }];
     await collect(agent.run("u1"));
     expect(lastStreamArgs?.messages).toEqual([{ role: "user", content: "u1" }]);
 
-    nextStreamParts = [{ type: "text-delta", text: "a2" }];
+    nextStreamParts = [{ type: "text-delta", delta: "a2" }];
     await collect(agent.run("u2"));
     expect(lastStreamArgs?.messages).toEqual([
       { role: "user", content: "u1" },
@@ -277,6 +322,80 @@ describe("Agent", () => {
     await collect(new Agent({ executor: stubExecutor }).run("hi"));
     const po = lastStreamArgs?.providerOptions as { openai: { store: boolean } };
     expect(po.openai.store).toBe(true);
+  });
+
+  test("requests OpenAI reasoning summaries in verbose mode", async () => {
+    nextStreamParts = [];
+    await collect(new Agent({ executor: stubExecutor }).run("hi", { verbose: true }));
+    const po = lastStreamArgs?.providerOptions as {
+      openai: { reasoningSummary?: string };
+    };
+    expect(po.openai.reasoningSummary).toBe("auto");
+  });
+
+  test("requests OpenAI reasoning summaries when showReasoning is enabled", async () => {
+    nextStreamParts = [];
+    await collect(new Agent({ executor: stubExecutor }).run("hi", { showReasoning: true }));
+    const po = lastStreamArgs?.providerOptions as {
+      openai: { reasoningSummary?: string };
+    };
+    expect(po.openai.reasoningSummary).toBe("auto");
+  });
+
+  test("requests raw provider chunks in verbose mode", async () => {
+    nextStreamParts = [];
+    await collect(new Agent({ executor: stubExecutor }).run("hi", { verbose: true }));
+    expect(lastStreamArgs?.includeRawChunks).toBe(true);
+  });
+
+  test("requests raw provider chunks when showReasoning is enabled", async () => {
+    nextStreamParts = [];
+    await collect(new Agent({ executor: stubExecutor }).run("hi", { showReasoning: true }));
+    expect(lastStreamArgs?.includeRawChunks).toBe(true);
+  });
+
+  test("does not request raw provider chunks by default", async () => {
+    nextStreamParts = [];
+    await collect(new Agent({ executor: stubExecutor }).run("hi"));
+    expect(lastStreamArgs?.includeRawChunks).toBe(false);
+  });
+
+  test("surfaces OpenAI-compatible raw reasoning_content chunks as reasoning in verbose mode", async () => {
+    nextStreamParts = [
+      {
+        type: "raw",
+        rawValue: { choices: [{ delta: { reasoning_content: "thinking from provider" } }] },
+      },
+    ];
+    const events = await collect(
+      new Agent({ executor: stubExecutor }).run("hi", { verbose: true }),
+    );
+    expect(events).toEqual([
+      { type: "debug", label: "raw-stream-part", data: nextStreamParts[0] },
+      { type: "reasoning", delta: "thinking from provider" },
+    ]);
+  });
+
+  test("surfaces raw reasoning_content without debug records when showReasoning is enabled", async () => {
+    nextStreamParts = [
+      {
+        type: "raw",
+        rawValue: { choices: [{ delta: { reasoning_content: "thinking from provider" } }] },
+      },
+    ];
+    const events = await collect(
+      new Agent({ executor: stubExecutor }).run("hi", { showReasoning: true }),
+    );
+    expect(events).toEqual([{ type: "reasoning", delta: "thinking from provider" }]);
+  });
+
+  test("does not request OpenAI reasoning summaries by default", async () => {
+    nextStreamParts = [];
+    await collect(new Agent({ executor: stubExecutor }).run("hi"));
+    const po = lastStreamArgs?.providerOptions as {
+      openai: { reasoningSummary?: string };
+    };
+    expect(po.openai.reasoningSummary).toBeUndefined();
   });
 
   test("uses the supplied system prompt", async () => {
