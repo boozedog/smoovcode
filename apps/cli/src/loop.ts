@@ -96,7 +96,8 @@ export async function runLoop(executor: Executor, model?: string) {
       stdout.write("\n");
     }
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ERR_USE_AFTER_CLOSE") return;
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ERR_USE_AFTER_CLOSE" || code === "ABORT_ERR") return;
     throw err;
   } finally {
     rl.close();

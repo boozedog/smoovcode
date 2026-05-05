@@ -222,4 +222,18 @@ describe("runLoop", () => {
     expect(questionPrompts).toContain("\n> ");
     expect(agentRunCalls).toEqual(["hello"]);
   });
+
+  test("exits cleanly when readline aborts after ctrl-c", async () => {
+    readlineMocks.createInterface.mockImplementation(() => ({
+      question: vi.fn(async () => {
+        const err = new Error("Aborted with Ctrl+C") as NodeJS.ErrnoException;
+        err.code = "ABORT_ERR";
+        throw err;
+      }),
+      close: readlineMocks.rlClose,
+    }));
+
+    await expect(runLoop(stubExecutor)).resolves.toBeUndefined();
+    expect(readlineMocks.rlClose).toHaveBeenCalledTimes(1);
+  });
 });
