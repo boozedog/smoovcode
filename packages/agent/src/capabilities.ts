@@ -14,6 +14,44 @@ function sanitizeCapabilityToolName(name: string): string {
 }
 
 export type CapabilitySafety = "read" | "write" | "external";
+export type FlowEndpoint = "working-tree" | "git" | "github" | "network" | "secrets" | "user";
+
+export interface CapabilityFlow {
+  sources?: FlowEndpoint[];
+  sinks?: FlowEndpoint[];
+}
+
+export interface InnerToolCall {
+  parentTool?: string;
+  capability: string;
+  namespace: string;
+  tool: string;
+  input: unknown;
+  safety: CapabilitySafety;
+  flow?: CapabilityFlow;
+}
+
+export type PolicyDecision = { type: "allow" } | { type: "deny"; reason: string };
+
+export interface CapabilityPolicy {
+  beforeToolCall?(call: InnerToolCall): Promise<PolicyDecision> | PolicyDecision;
+  checkFlow?(flow: {
+    sources: FlowEndpoint[];
+    sinks: FlowEndpoint[];
+    call: InnerToolCall;
+  }): Promise<PolicyDecision> | PolicyDecision;
+  afterToolCall?(call: InnerToolCall, output: unknown): Promise<void> | void;
+}
+
+export interface CapabilityObserver {
+  onInnerToolCallStart?(call: InnerToolCall): Promise<void> | void;
+  onInnerToolCallEnd?(call: InnerToolCall, output: unknown): Promise<void> | void;
+  onInnerToolCallError?(call: InnerToolCall, error: string): Promise<void> | void;
+}
+
+export interface CapabilityExecuteOptions {
+  parentTool?: string;
+}
 
 export interface HostProcessResult {
   stdout: string;
@@ -47,6 +85,7 @@ export interface Capability<I = unknown, O = unknown> {
   description: string;
   inputSchema: z.ZodType<I>;
   safety: CapabilitySafety;
+  flow?: CapabilityFlow;
   execute(input: I, ctx: CapabilityContext): Promise<O>;
 }
 
@@ -157,6 +196,7 @@ export function defaultCapabilities(): Capability[] {
       description: "View a GitHub issue as structured JSON by number.",
       inputSchema: z.object({ number: z.number().int().positive() }),
       safety: "read",
+      flow: { sources: ["github"] },
       execute: ({ number }, ctx) =>
         runJson(ctx, [
           "issue",
@@ -175,6 +215,7 @@ export function defaultCapabilities(): Capability[] {
         limit: z.number().int().min(1).max(200).optional(),
       }),
       safety: "read",
+      flow: { sources: ["github"] },
       execute: ({ state, labels, limit }, ctx) => {
         const args = ["issue", "list"];
         if (state) args.push("--state", state);
@@ -182,6 +223,45 @@ export function defaultCapabilities(): Capability[] {
         if (limit) args.push("--limit", String(limit));
         args.push("--json", "number,title,state,labels,assignees,author,url");
         return runJson(ctx, args);
+      },
+    },
+    {
+      name: "gh.issue.comment",
+      description: "Comment on a GitHub issue with fixed, non-interactive gh argv.",
+      inputSchema: z.object({ number: z.number().int().positive(), body: z.string().min(1) }),
+      safety: "external",
+      flow: { sinks: ["github"] },
+      execute: async ({ number, body }, ctx) => {
+        const result = await ctx.runner(
+          "gh",
+          ["issue", "comment", String(number), "--body", body],
+          ctx,
+        );
+        return {
+          stdout: capText(result.stdout, ctx.maxOutputBytes),
+          stderr: capText(result.stderr, ctx.maxOutputBytes),
+          exitCode: result.exitCode,
+        };
+      },
+    },
+    {
+      name: "gh.issue.close",
+      description: "Close a GitHub issue with fixed, non-interactive gh argv.",
+      inputSchema: z.object({
+        number: z.number().int().positive(),
+        comment: z.string().min(1).optional(),
+      }),
+      safety: "external",
+      flow: { sinks: ["github"] },
+      execute: async ({ number, comment }, ctx) => {
+        const args = ["issue", "close", String(number)];
+        if (comment) args.push("--comment", comment);
+        const result = await ctx.runner("gh", args, ctx);
+        return {
+          stdout: capText(result.stdout, ctx.maxOutputBytes),
+          stderr: capText(result.stderr, ctx.maxOutputBytes),
+          exitCode: result.exitCode,
+        };
       },
     },
     {
@@ -280,11 +360,16 @@ export interface CapabilityRegistryOptions {
   timeoutMs?: number;
   maxOutputBytes?: number;
   env?: NodeJS.ProcessEnv;
+  observer?: CapabilityObserver;
+  policy?: CapabilityPolicy;
 }
 
 export class CapabilityRegistry {
   private readonly byName: Map<string, Capability>;
   private readonly ctx: CapabilityContext;
+  private readonly observer?: CapabilityObserver;
+  private readonly policy?: CapabilityPolicy;
+  private readonly executionTaint = new Set<FlowEndpoint>();
 
   constructor(opts: CapabilityRegistryOptions = {}) {
     this.byName = new Map(
@@ -297,17 +382,63 @@ export class CapabilityRegistry {
       maxOutputBytes: opts.maxOutputBytes ?? DEFAULT_CAPABILITY_MAX_OUTPUT_BYTES,
       env: defaultCapabilityEnv(opts.env),
     };
+    this.observer = opts.observer;
+    this.policy = opts.policy;
   }
 
   names(): string[] {
     return [...this.byName.keys()].sort();
   }
 
-  async execute(name: string, input: unknown): Promise<unknown> {
+  get(name: string): Capability | undefined {
+    return this.byName.get(name);
+  }
+
+  async execute(
+    name: string,
+    input: unknown,
+    opts: CapabilityExecuteOptions = {},
+  ): Promise<unknown> {
     const cap = this.byName.get(name);
     if (!cap) throw new Error(`unknown capability: ${name}`);
     const parsed = cap.inputSchema.parse(input);
-    return await cap.execute(parsed, this.ctx);
+    const [namespace, ...rest] = name.split(".");
+    const call: InnerToolCall = {
+      parentTool: opts.parentTool,
+      capability: name,
+      namespace: namespace ?? "",
+      tool: sanitizeCapabilityToolName(rest.join(".")),
+      input,
+      safety: cap.safety,
+      flow: cap.flow,
+    };
+    await this.observer?.onInnerToolCallStart?.(call);
+    try {
+      await this.enforcePolicy(call);
+      const output = await cap.execute(parsed, this.ctx);
+      for (const source of cap.flow?.sources ?? []) this.executionTaint.add(source);
+      await this.observer?.onInnerToolCallEnd?.(call, output);
+      await this.policy?.afterToolCall?.(call, output);
+      return output;
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      await this.observer?.onInnerToolCallError?.(call, error);
+      throw err;
+    }
+  }
+
+  private async enforcePolicy(call: InnerToolCall): Promise<void> {
+    const before = await this.policy?.beforeToolCall?.(call);
+    if (before?.type === "deny") throw new Error(before.reason);
+    const sinks = call.flow?.sinks ?? [];
+    if (sinks.length > 0) {
+      const decision = await this.policy?.checkFlow?.({
+        sources: [...this.executionTaint],
+        sinks,
+        call,
+      });
+      if (decision?.type === "deny") throw new Error(decision.reason);
+    }
   }
 
   toProviders(): Array<{
@@ -319,7 +450,7 @@ export class CapabilityRegistry {
       const [namespace, ...rest] = name.split(".");
       const fnName = rest.join(".");
       const fns = groups.get(namespace) ?? {};
-      fns[fnName] = (input: unknown) => this.execute(name, input);
+      fns[fnName] = (input: unknown) => this.execute(name, input, { parentTool: "codemode" });
       groups.set(namespace, fns);
     }
     return [...groups.entries()].map(([name, fns]) => ({ name, fns }));

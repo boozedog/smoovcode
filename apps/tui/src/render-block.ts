@@ -107,6 +107,9 @@ function renderCodemode(
   }
   const highlightedCode = getHighlighted(input.code, "ts") ?? input.code;
   const lines = [summary, ...highlightedCode.split("\n")];
+  if (nestedToolCalls && nestedToolCalls.length > 0) {
+    lines.push(...nestedToolCalls.map((call) => ansi.dim(`  ${formatNestedToolCall(call)}`)));
+  }
   if (block.status === "done") {
     const result = formatCodemodeResult(block.output);
     lines.push(...(getHighlighted(result, "json") ?? result).split("\n"));
@@ -178,6 +181,17 @@ function truncateLargeStrings(value: unknown): unknown {
 
 function extractResult(o: unknown): unknown {
   return o && typeof o === "object" && "result" in o ? (o as { result: unknown }).result : o;
+}
+
+function formatNestedToolCall(call: unknown): string {
+  if (!call || typeof call !== "object") return `→ ${JSON.stringify(call)}`;
+  const c = call as { provider?: unknown; name?: unknown; status?: unknown; error?: unknown };
+  const provider = typeof c.provider === "string" ? c.provider : "tool";
+  const name = typeof c.name === "string" ? c.name : "call";
+  const fullName = `${provider}.${name}`;
+  if (c.status === "error")
+    return `✗ ${fullName}${typeof c.error === "string" ? ` ${c.error}` : ""}`;
+  return `✓ ${fullName}`;
 }
 
 function extractNestedToolCalls(o: unknown): unknown[] | null {

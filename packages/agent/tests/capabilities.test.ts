@@ -119,4 +119,80 @@ describe("host capabilities", () => {
       "status",
     );
   });
+
+  test("emits inner call start and result events", async () => {
+    const events: unknown[] = [];
+    const registry = createDefaultCapabilityRegistry({
+      cwd,
+      runner: runner([], '{"number":28}'),
+      observer: {
+        onInnerToolCallStart: (call) => {
+          events.push({ type: "start", call });
+        },
+        onInnerToolCallEnd: (call, output) => {
+          events.push({ type: "end", call, output });
+        },
+      },
+    });
+
+    await registry.execute("gh.issue.view", { number: 28 }, { parentTool: "codemode" });
+
+    expect(events).toMatchObject([
+      { type: "start", call: { parentTool: "codemode", capability: "gh.issue.view" } },
+      { type: "end", call: { parentTool: "codemode" }, output: { number: 28 } },
+    ]);
+  });
+
+  test("emits inner call error events", async () => {
+    const events: unknown[] = [];
+    const registry = createDefaultCapabilityRegistry({
+      cwd,
+      runner: async () => {
+        throw new Error("boom");
+      },
+      observer: {
+        onInnerToolCallError: (call, error) => {
+          events.push({ call, error });
+        },
+      },
+    });
+
+    await expect(registry.execute("gh.issue.view", { number: 1 })).rejects.toThrow("boom");
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ call: { capability: "gh.issue.view" }, error: "boom" });
+  });
+
+  test("policy denial prevents execution", async () => {
+    const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+    const registry = createDefaultCapabilityRegistry({
+      cwd,
+      runner: runner(calls),
+      policy: { beforeToolCall: async () => ({ type: "deny", reason: "not allowed" }) },
+    });
+
+    await expect(registry.execute("gh.issue.view", { number: 1 })).rejects.toThrow("not allowed");
+    expect(calls).toEqual([]);
+  });
+
+  test("declares source and sink flow metadata and can deny github sink flows", async () => {
+    const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+    const registry = createDefaultCapabilityRegistry({
+      cwd,
+      runner: runner(calls),
+      policy: {
+        checkFlow: async ({ sinks }) =>
+          sinks.includes("github")
+            ? { type: "deny", reason: "github writes require approval" }
+            : { type: "allow" },
+      },
+    });
+
+    await registry.execute("gh.issue.view", { number: 1 });
+    await expect(registry.execute("gh.issue.comment", { number: 1, body: "hi" })).rejects.toThrow(
+      /approval/,
+    );
+    expect(registry.get("gh.issue.view")?.flow).toEqual({ sources: ["github"] });
+    expect(registry.get("gh.issue.comment")?.flow).toEqual({ sinks: ["github"] });
+  });
 });
