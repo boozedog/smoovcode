@@ -151,6 +151,7 @@ export class Agent {
     const apiMode = await resolveApiMode();
     const modelId = this.opts.model ?? "gpt-5";
     const showReasoning = runOpts.verbose === true || runOpts.showReasoning === true;
+    const includeRawChunks = providerName() === "openai" && showReasoning;
     const result = streamText({
       model: resolveModel(modelId, apiMode),
       providerOptions: resolveProviderOptions(showReasoning),
@@ -158,7 +159,7 @@ export class Agent {
       messages: this.history,
       tools,
       stopWhen: stepCountIs(30),
-      includeRawChunks: showReasoning,
+      includeRawChunks,
     });
 
     let assistantText = "";

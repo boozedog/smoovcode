@@ -407,10 +407,17 @@ describe("Agent", () => {
     expect(lastStreamArgs?.includeRawChunks).toBe(true);
   });
 
-  test("requests raw provider chunks when showReasoning is enabled", async () => {
+  test("requests raw provider chunks when showReasoning is enabled for OpenAI-compatible providers", async () => {
     nextStreamParts = [];
     await collect(new Agent({ executor: stubExecutor }).run("hi", { showReasoning: true }));
     expect(lastStreamArgs?.includeRawChunks).toBe(true);
+  });
+
+  test("does not request raw provider chunks for Fireworks reasoning display", async () => {
+    process.env.SMOOV_PROVIDER = "fireworks";
+    nextStreamParts = [];
+    await collect(new Agent({ executor: stubExecutor }).run("hi", { showReasoning: true }));
+    expect(lastStreamArgs?.includeRawChunks).toBe(false);
   });
 
   test("does not request raw provider chunks by default", async () => {
