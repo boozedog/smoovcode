@@ -64,14 +64,26 @@ The AI agent has access to a deliberately small capability surface:
 Set these environment variables (in `.env` or your shell):
 
 ```bash
+# Optional: AI provider (openai default, or fireworks)
+SMOOV_PROVIDER=openai
+
 # Required: API key for AI provider
 SMOOV_API_KEY=your-api-key-here
+# Fireworks also supports FIREWORKS_API_KEY directly
+# FIREWORKS_API_KEY=your-fireworks-key-here
 
-# Optional: Custom base URL (defaults to OpenAI)
+# Optional: Custom base URL (OpenAI-compatible providers only)
 SMOOV_BASE_URL=https://api.openai.com/v1
 
 # Optional: Model selection
 SMOOV_MODEL=gpt-4o
+# Fireworks example:
+# SMOOV_MODEL=accounts/fireworks/routers/kimi-k2p5-turbo
+
+# Optional: Fireworks thinking/reasoning
+# SMOOV_FIREWORKS_THINKING=enabled
+# SMOOV_FIREWORKS_THINKING_BUDGET_TOKENS=4096
+# SMOOV_FIREWORKS_REASONING_HISTORY=interleaved
 
 # Optional: Execution backend (quickjs, local)
 SMOOV_BACKEND=quickjs

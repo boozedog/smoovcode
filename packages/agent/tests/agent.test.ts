@@ -45,10 +45,22 @@ vi.mock(import("ai"), async (importOriginal) => {
 });
 
 vi.mock("@ai-sdk/openai", () => {
-  const responses = (id: string) => ({ kind: "responses", id });
-  const chat = (id: string) => ({ kind: "chat", id });
+  const responses = (id: string) => ({ provider: "openai", kind: "responses", id });
+  const chat = (id: string) => ({ provider: "openai", kind: "chat", id });
   return {
     createOpenAI: (_opts: unknown) => Object.assign((id: string) => chat(id), { responses, chat }),
+  };
+});
+
+vi.mock("@ai-sdk/fireworks", () => {
+  const model = (id: string) => ({ provider: "fireworks", kind: "language", id });
+  return {
+    createFireworks: (_opts: unknown) =>
+      Object.assign(model, {
+        completionModel: (id: string) => ({ provider: "fireworks", kind: "completion", id }),
+        embeddingModel: (id: string) => ({ provider: "fireworks", kind: "embedding", id }),
+        image: (id: string) => ({ provider: "fireworks", kind: "image", id }),
+      }),
   };
 });
 
@@ -77,7 +89,15 @@ async function collect<T>(iter: AsyncIterable<T>): Promise<T[]> {
 }
 
 describe("Agent", () => {
-  const ENV_KEYS = ["SMOOV_API_MODE", "SMOOV_ZDR", "SMOOV_DEBUG"] as const;
+  const ENV_KEYS = [
+    "SMOOV_API_MODE",
+    "SMOOV_ZDR",
+    "SMOOV_DEBUG",
+    "SMOOV_PROVIDER",
+    "SMOOV_FIREWORKS_THINKING",
+    "SMOOV_FIREWORKS_THINKING_BUDGET_TOKENS",
+    "SMOOV_FIREWORKS_REASONING_HISTORY",
+  ] as const;
   const saved: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
 
   beforeEach(() => {
@@ -261,14 +281,53 @@ describe("Agent", () => {
     detectMock.mockResolvedValue("responses");
     nextStreamParts = [];
     await collect(new Agent({ executor: stubExecutor, model: "my-model" }).run("hi"));
-    expect(lastStreamArgs?.model).toEqual({ kind: "responses", id: "my-model" });
+    expect(lastStreamArgs?.model).toEqual({
+      provider: "openai",
+      kind: "responses",
+      id: "my-model",
+    });
   });
 
   test("uses provider.chat(modelId) when api mode is 'chat'", async () => {
     detectMock.mockResolvedValue("chat");
     nextStreamParts = [];
     await collect(new Agent({ executor: stubExecutor, model: "my-model" }).run("hi"));
-    expect(lastStreamArgs?.model).toEqual({ kind: "chat", id: "my-model" });
+    expect(lastStreamArgs?.model).toEqual({ provider: "openai", kind: "chat", id: "my-model" });
+  });
+
+  test("uses the Fireworks language provider when SMOOV_PROVIDER=fireworks", async () => {
+    process.env.SMOOV_PROVIDER = "fireworks";
+    detectMock.mockRejectedValue(new Error("should not be called"));
+    nextStreamParts = [];
+    await collect(
+      new Agent({
+        executor: stubExecutor,
+        model: "accounts/fireworks/routers/kimi-k2p5-turbo",
+      }).run("hi"),
+    );
+    expect(lastStreamArgs?.model).toEqual({
+      provider: "fireworks",
+      kind: "language",
+      id: "accounts/fireworks/routers/kimi-k2p5-turbo",
+    });
+    expect(detectMock).not.toHaveBeenCalled();
+  });
+
+  test("passes Fireworks thinking and reasoning-history options", async () => {
+    process.env.SMOOV_PROVIDER = "fireworks";
+    process.env.SMOOV_FIREWORKS_THINKING = "enabled";
+    process.env.SMOOV_FIREWORKS_THINKING_BUDGET_TOKENS = "4096";
+    process.env.SMOOV_FIREWORKS_REASONING_HISTORY = "interleaved";
+    nextStreamParts = [];
+    await collect(
+      new Agent({ executor: stubExecutor, model: "accounts/fireworks/models/kimi-k2p5" }).run("hi"),
+    );
+    expect(lastStreamArgs?.providerOptions).toEqual({
+      fireworks: {
+        thinking: { type: "enabled", budgetTokens: 4096 },
+        reasoningHistory: "interleaved",
+      },
+    });
   });
 
   test("defaults the model to gpt-5", async () => {

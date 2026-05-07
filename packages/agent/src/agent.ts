@@ -1,3 +1,4 @@
+import { createFireworks } from "@ai-sdk/fireworks";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createCodeTool } from "@cloudflare/codemode/ai";
 import { type ModelMessage, stepCountIs, streamText } from "ai";
@@ -6,10 +7,23 @@ import { createDefaultCapabilityRegistry } from "./capabilities.ts";
 import type { Executor } from "./executor.ts";
 import { createToolSession, type ToolSession } from "./tool-session.ts";
 
-const baseURL = process.env.SMOOV_BASE_URL ?? "https://api.openai.com/v1";
-const apiKey = process.env.SMOOV_API_KEY ?? process.env.OPENAI_API_KEY;
+type ProviderName = "openai" | "fireworks";
+type ProviderOptionValue = string | number | boolean | null | ProviderOptionsObject;
+type ProviderOptionsObject = { [key: string]: ProviderOptionValue };
 
-const provider = createOpenAI({ baseURL, apiKey });
+function providerName(): ProviderName {
+  return process.env.SMOOV_PROVIDER === "fireworks" ? "fireworks" : "openai";
+}
+
+function baseURL(): string {
+  return process.env.SMOOV_BASE_URL ?? "https://api.openai.com/v1";
+}
+
+function apiKey(): string | undefined {
+  if (providerName() === "fireworks")
+    return process.env.FIREWORKS_API_KEY ?? process.env.SMOOV_API_KEY;
+  return process.env.SMOOV_API_KEY ?? process.env.OPENAI_API_KEY;
+}
 
 async function resolveApiMode(): Promise<ApiMode> {
   const forced = process.env.SMOOV_API_MODE;
@@ -17,7 +31,8 @@ async function resolveApiMode(): Promise<ApiMode> {
   // ZDR providers can't use Responses' server-state features and have
   // silently broken tool-result threading. Skip the probe and use chat.
   if (isZdr()) return "chat";
-  return detectApiMode({ baseUrl: baseURL, apiKey });
+  if (providerName() === "fireworks") return "chat";
+  return detectApiMode({ baseUrl: baseURL(), apiKey: apiKey() });
 }
 
 // ZDR (Zero Data Retention) providers don't store request items server-side,
@@ -29,7 +44,46 @@ function isZdr(): boolean {
   if (env === "true" || env === "1") return true;
   if (env === "false" || env === "0") return false;
   // Heuristic: real OpenAI stores by default, anyone else probably doesn't.
-  return !baseURL.includes("api.openai.com");
+  if (providerName() === "fireworks") return true;
+  return !baseURL().includes("api.openai.com");
+}
+
+function resolveModel(modelId: string, apiMode: ApiMode) {
+  if (providerName() === "fireworks") {
+    return createFireworks({ apiKey: apiKey(), baseURL: process.env.SMOOV_BASE_URL })(modelId);
+  }
+  const provider = createOpenAI({ baseURL: baseURL(), apiKey: apiKey() });
+  return apiMode === "responses" ? provider.responses(modelId) : provider.chat(modelId);
+}
+
+function resolveProviderOptions(showReasoning: boolean): Record<string, ProviderOptionsObject> {
+  if (providerName() !== "fireworks") {
+    return {
+      openai: {
+        store: !isZdr(),
+        ...(showReasoning ? { reasoningSummary: "auto" } : {}),
+      },
+    };
+  }
+
+  const fireworks: ProviderOptionsObject = {};
+  const thinking = process.env.SMOOV_FIREWORKS_THINKING;
+  if (thinking === "enabled" || thinking === "disabled") {
+    const budgetTokens = Number(process.env.SMOOV_FIREWORKS_THINKING_BUDGET_TOKENS);
+    fireworks.thinking = {
+      type: thinking,
+      ...(Number.isFinite(budgetTokens) && budgetTokens > 0 ? { budgetTokens } : {}),
+    };
+  }
+  const reasoningHistory = process.env.SMOOV_FIREWORKS_REASONING_HISTORY;
+  if (
+    reasoningHistory === "disabled" ||
+    reasoningHistory === "interleaved" ||
+    reasoningHistory === "preserved"
+  ) {
+    fireworks.reasoningHistory = reasoningHistory;
+  }
+  return Object.keys(fireworks).length > 0 ? { fireworks } : {};
 }
 
 export interface AgentOptions {
@@ -98,13 +152,8 @@ export class Agent {
     const modelId = this.opts.model ?? "gpt-5";
     const showReasoning = runOpts.verbose === true || runOpts.showReasoning === true;
     const result = streamText({
-      model: apiMode === "responses" ? provider.responses(modelId) : provider.chat(modelId),
-      providerOptions: {
-        openai: {
-          store: !isZdr(),
-          ...(showReasoning ? { reasoningSummary: "auto" } : {}),
-        },
-      },
+      model: resolveModel(modelId, apiMode),
+      providerOptions: resolveProviderOptions(showReasoning),
       system,
       messages: this.history,
       tools,
